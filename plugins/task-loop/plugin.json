@@ -1,0 +1,9 @@
+{
+  "name": "task-loop",
+  "version": "1.0.0",
+  "description": "長時間タスクの実行・監視・管理を行うプラグイン。タスクのループ実行、進捗監視、エラーハンドリングを提供する。",
+  "author": {
+    "name": "DIO0550"
+  },
+  "skills": "./skills"
+}

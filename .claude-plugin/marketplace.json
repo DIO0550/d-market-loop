@@ -1,0 +1,20 @@
+{
+  "name": "d-market-loop",
+  "owner": {
+    "name": "DIO0550"
+  },
+  "metadata": {
+    "description": "Claude Code Long-running Task Execution Marketplace",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "task-loop",
+      "source": "./plugins/task-loop",
+      "description": "長時間タスクの実行・監視・管理を行うプラグイン。タスクのループ実行、進捗監視、エラーハンドリングを提供する。",
+      "version": "1.0.0",
+      "category": "productivity",
+      "tags": ["task-execution", "long-running", "loop", "monitoring"]
+    }
+  ]
+}
