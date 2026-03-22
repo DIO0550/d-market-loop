@@ -27,6 +27,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 {
   "tasksDir": "tasks",
   "stateFile": "task-loop-state.json",
+  "planFile": "task-loop-plan.md",
   "baseBranch": "main",
   "branchPrefix": "task/",
   "maxTasks": 0,
@@ -44,6 +45,23 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 ```
 
 設定フォーマットの詳細は `references/loop-config-format.md` を参照。
+
+## 計画書の読み込み
+
+設定の `planFile`（デフォルト: `task-loop-plan.md`）を確認する。
+
+1. ファイルが存在する場合:
+   - 計画書を全文読み込む
+   - 以下の情報を以降のタスク処理で活用する:
+     - **Project Context** — 技術スタック、アーキテクチャ、制約条件を実装時に遵守する
+     - **Shared Context** — タスク間の連携情報を参照し、一貫した実装を行う
+     - **Coding Conventions** — コーディング規約に従う
+     - **Risks & Notes** — リスクと注意点を意識する
+2. ファイルが存在しない場合:
+   - 警告なしでスキップする（後方互換性を維持）
+   - タスクファイルの内容のみに基づいて実装する
+
+計画書フォーマットの詳細は `references/loop-plan-format.md` を参照。
 
 ## 中断復帰チェック
 
@@ -83,7 +101,11 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 ### Step 2: 実装
 
 1. タスクファイルの Description、Requirements、Files to Modify、Acceptance Criteria を読む
-2. タスクの内容に従って実装を行う
+2. 計画書が読み込まれている場合:
+   - Project Context の Tech Stack・Architecture・Constraints に従う
+   - Shared Context を確認し、先行タスクとの整合性を維持する
+   - Coding Conventions に従ったコードを書く
+3. タスクの内容に従って実装を行う
    - コードの読み取り、ファイルの作成・編集、必要に応じてコマンド実行
 3. タスクファイルに Test Command が指定されている場合:
    - テストを実行する

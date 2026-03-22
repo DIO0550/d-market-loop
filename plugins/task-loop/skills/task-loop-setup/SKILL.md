@@ -71,7 +71,13 @@ task-loop-state.json
 
 いずれの方法でも、タスクファイルフォーマット（`references/task-file-format.md`）に従って生成する。
 
-### Step 6: セットアップ完了サマリー
+### Step 6: ループ全体計画書の生成
+
+`task-loop-doc` スキルを実行し、ループ全体計画書を生成する。
+
+このスキルが、タスクファイルとプロジェクト情報を分析して `task-loop-plan.md` を自動生成する。
+
+### Step 7: セットアップ完了サマリー
 
 生成したファイルの一覧と次のステップを出力する。
 
@@ -81,6 +87,7 @@ task-loop-state.json
 
 生成したファイル:
   - task-loop-config.json
+  - task-loop-plan.md
   - tasks/001-add-auth-module.md
   - tasks/002-setup-database-schema.md
   - tasks/003-implement-api-endpoints.md
@@ -88,7 +95,8 @@ task-loop-state.json
 
 次のステップ:
   1. 生成されたタスクファイルの内容を確認・修正してください
-  2. task-loop-run スキルを実行してタスクの自動実行を開始してください
+  2. ループ全体計画書（task-loop-plan.md）の内容を確認してください
+  3. task-loop-run スキルを実行してタスクの自動実行を開始してください
 ```
 
 ## タスク分割ガイド

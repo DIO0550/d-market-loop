@@ -9,6 +9,7 @@
 {
   "tasksDir": "tasks",
   "stateFile": "task-loop-state.json",
+  "planFile": "task-loop-plan.md",
   "baseBranch": "main",
   "branchPrefix": "task/",
   "maxTasks": 0,
@@ -31,6 +32,7 @@
 |-----------|------|-----------|------|
 | `tasksDir` | string | `"tasks"` | タスクファイルのディレクトリ（リポジトリルートからの相対パス） |
 | `stateFile` | string | `"task-loop-state.json"` | 状態ファイルのパス |
+| `planFile` | string | `"task-loop-plan.md"` | ループ全体計画書のファイルパス（リポジトリルートからの相対パス） |
 | `baseBranch` | string | `"main"` | ベースブランチ名 |
 | `branchPrefix` | string | `"task/"` | タスクブランチ名のプレフィックス |
 | `maxTasks` | number | `0` | 処理するタスクの最大数。0 = 無制限 |
