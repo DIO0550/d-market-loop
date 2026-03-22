@@ -7,7 +7,7 @@ description: カンバン形式のタスクダッシュボード（Task.md）を
 
 タスクファイルとプロジェクト情報を分析し、カンバン形式のタスクダッシュボード（`Task.md`）を生成する。
 
-ダッシュボードフォーマットの詳細は `task-loop-run/references/task-md-format.md` を参照。
+ダッシュボードフォーマットの詳細は `references/task-md-format.md` を参照。
 
 ## 前提条件
 
