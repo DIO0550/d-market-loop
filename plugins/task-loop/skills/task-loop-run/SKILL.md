@@ -27,7 +27,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 {
   "tasksDir": "tasks",
   "stateFile": "task-loop-state.json",
-  "planFile": "task-loop-plan.md",
+  "planFile": "Task.md",
   "baseBranch": "main",
   "branchPrefix": "task/",
   "maxTasks": 0,
@@ -46,22 +46,25 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 設定フォーマットの詳細は `references/loop-config-format.md` を参照。
 
-## 計画書の読み込み
+## Task.md の読み込み
 
-設定の `planFile`（デフォルト: `task-loop-plan.md`）を確認する。
+設定の `planFile`（デフォルト: `Task.md`）を確認する。
 
 1. ファイルが存在する場合:
-   - 計画書を全文読み込む
-   - 以下の情報を以降のタスク処理で活用する:
-     - **Project Context** — 技術スタック、アーキテクチャ、制約条件を実装時に遵守する
+   - Task.md を全文読み込む
+   - **Context セクション** から以下の情報を以降のタスク処理で活用する:
+     - **Tech Stack** — 技術スタックを実装時に遵守する
+     - **Architecture** — アーキテクチャに沿った実装をする
+     - **Constraints** — 制約条件を守る
      - **Shared Context** — タスク間の連携情報を参照し、一貫した実装を行う
-     - **Coding Conventions** — コーディング規約に従う
-     - **Risks & Notes** — リスクと注意点を意識する
+     - **Notes** — リスク、規約、注意点を意識する
+   - **カンバンセクション** から現在のタスク状態を把握する
 2. ファイルが存在しない場合:
    - 警告なしでスキップする（後方互換性を維持）
+   - Task.md の更新も全てスキップする
    - タスクファイルの内容のみに基づいて実装する
 
-計画書フォーマットの詳細は `references/loop-plan-format.md` を参照。
+フォーマットの詳細は `references/task-md-format.md` を参照。
 
 ## 中断復帰チェック
 
@@ -97,14 +100,18 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
    例: `task/001-add-auth`
 5. タスクファイルのfrontmatterを `status: in_progress` に更新、`assignedAt` に現在時刻を設定
 6. `task-loop-state.json` にタスクエントリを追加（status: "in_progress"、startedAt）
+7. Task.md を更新: タスクエントリを **Todo** → **Processing** に移動
+   - `Priority` フィールドを削除
+   - `StartedAt`（現在時刻）、`Branch`（ブランチ名）、`Step: implementing` を追加
+   - frontmatter の `updatedAt` を更新
 
 ### Step 2: 実装
 
 1. タスクファイルの Description、Requirements、Files to Modify、Acceptance Criteria を読む
-2. 計画書が読み込まれている場合:
-   - Project Context の Tech Stack・Architecture・Constraints に従う
+2. Task.md が読み込まれている場合:
+   - Context の Tech Stack・Architecture・Constraints に従う
    - Shared Context を確認し、先行タスクとの整合性を維持する
-   - Coding Conventions に従ったコードを書く
+   - Notes の規約・注意点に従ったコードを書く
 3. タスクの内容に従って実装を行う
    - コードの読み取り、ファイルの作成・編集、必要に応じてコマンド実行
 3. タスクファイルに Test Command が指定されている場合:
@@ -152,6 +159,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 ### Step 5: レビュー待ち
 
+0. Task.md の Processing エントリの Step を `reviewing` に更新
 1. レビュー結果をポーリングする:
    ```bash
    gh pr view {PR番号} --json reviews,latestReviews,reviewDecision
@@ -171,6 +179,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 ### Step 6: レビュー指摘修正
 
+0. Task.md の Processing エントリの Step を `fixing` に更新
 1. PRのレビューコメントを取得する:
    ```bash
    gh api repos/{owner}/{repo}/pulls/{PR番号}/comments
@@ -192,6 +201,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 ### Step 7: マージ
 
+0. Task.md の Processing エントリの Step を `merging` に更新
 1. PRをマージする:
    ```bash
    gh pr merge {PR番号} --{mergeStrategy} --delete-branch
@@ -221,9 +231,14 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
    - `completedAt` を設定
    - `tasksCompleted` カウンタを+1
    - `lastUpdatedAt` を更新
-3. 状態更新をコミットする:
+3. Task.md を更新: タスクエントリを **Processing** → **Done** に移動
+   - チェックボックスを `- [x]` に変更
+   - `StartedAt`、`Branch`、`Step` フィールドを削除
+   - `CompletedAt`（現在時刻）、`PR`（PR URL）を追加
+   - frontmatter の `updatedAt` を更新
+4. 状態更新をコミットする:
    ```bash
-   git add {タスクファイル} {stateFile}
+   git add {タスクファイル} {stateFile} {planFile}
    git commit -m "chore: mark {ファイル名} as completed"
    git push origin {baseBranch}
    ```
@@ -252,6 +267,12 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 いずれのエラーでも:
 - `task-loop-state.json` にエラー状態を記録する
+- Task.md を更新: タスクエントリを **Processing** → **Failed** に移動
+  - チェックボックスを除去（`- **ID**` 形式にする）
+  - `StartedAt`、`Branch`、`Step` フィールドを削除
+  - `FailedAt`（現在時刻）、`Reason`（失敗理由）を追加
+  - PR が作成済みなら `PR`（PR URL）を追加
+  - frontmatter の `updatedAt` を更新
 - `stopOnError` が `true` → ループ終了（終了サマリーへ）
 - `stopOnError` が `false` → 次のタスクへ
 

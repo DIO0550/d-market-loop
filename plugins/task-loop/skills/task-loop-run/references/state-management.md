@@ -2,10 +2,11 @@
 
 ## 概要
 
-状態は2箇所で管理する:
+状態は3箇所で管理する:
 
 1. **タスクファイルのfrontmatter** — 個別タスクの状態（人間が直接確認可能）
 2. **task-loop-state.json** — 全体の実行状態と履歴（プログラム的な管理用）
+3. **Task.md** — カンバン形式のタスクダッシュボード（Todo/Processing/Done/Failed の4セクションで進捗を可視化）
 
 ## task-loop-state.json フォーマット
 
@@ -52,12 +53,15 @@ pending ──→ in_progress ──→ completed
 
 ## 状態の更新タイミング
 
-| タイミング | タスクファイル | state file |
-|-----------|--------------|------------|
-| タスク開始 | `status: in_progress`, `assignedAt` 設定 | タスクエントリ追加、`status: "in_progress"` |
-| PR作成 | `prUrl` 設定 | `prNumber`, `prUrl` 設定 |
-| タスク完了 | `status: completed`, `completedAt` 設定 | `status: "completed"`, カウンタ更新 |
-| タスク失敗 | `status: failed` | `status: "failed"`, カウンタ更新 |
+| タイミング | タスクファイル | state file | Task.md |
+|-----------|--------------|------------|---------|
+| タスク開始 | `status: in_progress`, `assignedAt` 設定 | タスクエントリ追加、`status: "in_progress"` | Todo → Processing に移動（StartedAt, Branch, Step 追加） |
+| PR作成 | `prUrl` 設定 | `prNumber`, `prUrl` 設定 | — |
+| レビュー待ち | — | — | Step を `reviewing` に更新 |
+| レビュー修正 | — | — | Step を `fixing` に更新 |
+| マージ中 | — | — | Step を `merging` に更新 |
+| タスク完了 | `status: completed`, `completedAt` 設定 | `status: "completed"`, カウンタ更新 | Processing → Done に移動（CompletedAt, PR 追加） |
+| タスク失敗 | `status: failed` | `status: "failed"`, カウンタ更新 | Processing → Failed に移動（FailedAt, Reason 追加） |
 
 ## 中断からの復帰
 
