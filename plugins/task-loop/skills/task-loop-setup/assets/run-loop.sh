@@ -67,8 +67,16 @@ has_processing_task() {
   ls "$TASKS_DIR"/processing/*.md &>/dev/null
 }
 
+# --- 前回ポーリング時のコメント数を記録 ---
+LAST_COMMENT_COUNT=""
+
 # --- レビュー結果をポーリング ---
-# 戻り値: "APPROVED", "CHANGES_REQUESTED", "TIMEOUT", "NO_PR"
+# 戻り値（最終行）:
+#   "APPROVED"           - reviewDecision が APPROVED（人間レビュアー）
+#   "CHANGES_REQUESTED"  - reviewDecision が CHANGES_REQUESTED（人間レビュアー）
+#   "COMMENTED"          - 新しいレビューコメントが付いた（Copilot等）
+#   "TIMEOUT"            - 制限時間超過
+#   "NO_PR"              - PR番号が不明
 poll_review() {
   local pr_number="$1"
 
@@ -80,53 +88,47 @@ poll_review() {
   local max_wait_seconds=$((REVIEW_MAX_WAIT * 60))
   local elapsed=0
 
+  # 初回ポーリング時の既存コメント数を記録（PR作成直後のベースライン）
+  if [ -z "$LAST_COMMENT_COUNT" ]; then
+    LAST_COMMENT_COUNT=$(gh api "repos/{owner}/{repo}/pulls/${pr_number}/comments" --jq 'length' 2>/dev/null || echo "0")
+    local review_comment_count
+    review_comment_count=$(gh api "repos/{owner}/{repo}/pulls/${pr_number}/reviews" --jq 'length' 2>/dev/null || echo "0")
+    LAST_COMMENT_COUNT=$((LAST_COMMENT_COUNT + review_comment_count))
+  fi
+
   echo "PR #${pr_number} のレビュー待ち開始（間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）"
 
   while [ "$elapsed" -lt "$max_wait_seconds" ]; do
-    local review_json
-    review_json=$(gh pr view "$pr_number" --json reviews,latestReviews,reviewDecision 2>/dev/null || echo "{}")
+    # 1. reviewDecision をチェック（人間レビュアー対応）
+    local review_decision
+    review_decision=$(gh pr view "$pr_number" --json reviewDecision --jq '.reviewDecision // ""' 2>/dev/null || echo "")
 
-    local decision
-    decision=$(echo "$review_json" | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    decision = data.get('reviewDecision', '')
-    if decision:
-        print(decision)
-        sys.exit(0)
-    # reviewDecision が空でも latestReviews に CHANGES_REQUESTED があるか確認
-    for review in data.get('latestReviews', []):
-        state = review.get('state', '')
-        if state == 'APPROVED':
-            print('APPROVED')
-            sys.exit(0)
-        if state == 'CHANGES_REQUESTED':
-            print('CHANGES_REQUESTED')
-            sys.exit(0)
-    # レビューコメントに指摘が含まれるかチェック
-    for review in data.get('latestReviews', []):
-        body = review.get('body', '')
-        if body and len(body.strip()) > 0:
-            print('CHANGES_REQUESTED')
-            sys.exit(0)
-    print('')
-except:
-    print('')
-" 2>/dev/null)
-
-    case "$decision" in
+    case "$review_decision" in
       APPROVED)
-        echo "レビュー結果: APPROVED"
+        echo "レビュー結果: APPROVED（reviewDecision）"
         echo "APPROVED"
         return
         ;;
       CHANGES_REQUESTED)
-        echo "レビュー結果: CHANGES_REQUESTED"
+        echo "レビュー結果: CHANGES_REQUESTED（reviewDecision）"
         echo "CHANGES_REQUESTED"
         return
         ;;
     esac
+
+    # 2. コメント数の変化をチェック（Copilot等のコメントベースレビュー対応）
+    local current_pr_comments
+    current_pr_comments=$(gh api "repos/{owner}/{repo}/pulls/${pr_number}/comments" --jq 'length' 2>/dev/null || echo "0")
+    local current_review_comments
+    current_review_comments=$(gh api "repos/{owner}/{repo}/pulls/${pr_number}/reviews" --jq 'length' 2>/dev/null || echo "0")
+    local current_total=$((current_pr_comments + current_review_comments))
+
+    if [ "$current_total" -gt "$LAST_COMMENT_COUNT" ]; then
+      LAST_COMMENT_COUNT="$current_total"
+      echo "レビュー結果: 新しいコメントを検出（コメント数: ${current_total}）"
+      echo "COMMENTED"
+      return
+    fi
 
     echo "  レビュー待機中... (${elapsed}/${max_wait_seconds}秒)"
     sleep "$REVIEW_POLL_INTERVAL"
@@ -179,6 +181,7 @@ Task.md の Processing エントリの Step は \`reviewing\` に更新してか
 
   # --- Phase 2: レビューポーリング (shell側) ---
   FIX_COUNT=0
+  LAST_COMMENT_COUNT=""  # タスクごとにリセット
 
   while true; do
     echo "=== Phase: poll ==="
@@ -188,7 +191,7 @@ Task.md の Processing エントリの Step は \`reviewing\` に更新してか
 
     case "$REVIEW_STATUS" in
       APPROVED)
-        # --- Phase 3a: マージ ---
+        # --- Phase 3a: マージ（人間レビュアーがAPPROVED） ---
         echo "=== Phase: merge ==="
         MERGE_PROMPT="${PROMPT_BASE}
 
@@ -203,11 +206,11 @@ Steps 7〜8（マージ、状態更新）を実行してください。
         ;;
 
       CHANGES_REQUESTED)
+        # 人間レビュアーが明示的に CHANGES_REQUESTED → 修正フローへ
         FIX_COUNT=$((FIX_COUNT + 1))
 
         if [ "$FIX_COUNT" -gt "$MAX_FIX_ITERATIONS" ]; then
           echo "修正上限（${MAX_FIX_ITERATIONS}回）に達しました。手動対応が必要です。"
-          # エラー処理をAIに委譲
           ERROR_PROMPT="${PROMPT_BASE}
 
 ## 実行モード: error
@@ -219,18 +222,69 @@ PR #${PR_NUMBER} のレビュー修正が上限（${MAX_FIX_ITERATIONS}回）に
           break
         fi
 
-        # --- Phase 3b: 修正 ---
         echo "=== Phase: fix (${FIX_COUNT}/${MAX_FIX_ITERATIONS}) ==="
         FIX_PROMPT="${PROMPT_BASE}
 
 ## 実行モード: fix
 
-PR #${PR_NUMBER} にレビュー指摘があります（修正回数: ${FIX_COUNT}/${MAX_FIX_ITERATIONS}）。
+PR #${PR_NUMBER} に人間レビュアーから CHANGES_REQUESTED が出ています（修正回数: ${FIX_COUNT}/${MAX_FIX_ITERATIONS}）。
 Step 6（レビュー指摘修正）を実行してください。
 修正をコミット・プッシュしたら、レビュー待ちには入らず終了してください。
 Task.md の Processing エントリの Step は \`reviewing\` に更新してから終了してください。"
 
         claude -p "$FIX_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+        ;;
+
+      COMMENTED)
+        # コメントが付いた（Copilot等）→ AIに指摘の有無を判断させる
+        echo "=== Phase: review-check ==="
+        REVIEW_CHECK_PROMPT="${PROMPT_BASE}
+
+## 実行モード: review-check
+
+PR #${PR_NUMBER} に新しいレビューコメントが付きました。
+
+以下の手順で処理してください:
+
+1. PRのレビューコメントを取得する:
+   \`\`\`bash
+   gh api repos/{owner}/{repo}/pulls/${PR_NUMBER}/comments
+   gh api repos/{owner}/{repo}/pulls/${PR_NUMBER}/reviews
+   \`\`\`
+2. コメント内容を分析し、**修正が必要な指摘があるか**を判断する
+3. 判断結果に応じて:
+   - **指摘なし**（情報提供のみ、褒めるコメント、軽微な提案のみ等）:
+     → Steps 7〜8（マージ、状態更新）を実行して終了
+   - **指摘あり**（コード修正が必要な指摘、バグの指摘等）:
+     → Step 6（レビュー指摘修正）を実行
+     → 修正をコミット・プッシュしたら、レビュー待ちには入らず終了
+     → Task.md の Processing エントリの Step は \`reviewing\` に更新してから終了
+
+修正回数: ${FIX_COUNT}/${MAX_FIX_ITERATIONS}"
+
+        claude -p "$REVIEW_CHECK_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+
+        # AIの処理結果を確認: タスクが done/ に移動していればマージ完了
+        if ! has_processing_task; then
+          echo "タスクがマージされました。"
+          break
+        fi
+
+        # まだ processing にある = 修正して再レビュー待ち
+        FIX_COUNT=$((FIX_COUNT + 1))
+
+        if [ "$FIX_COUNT" -gt "$MAX_FIX_ITERATIONS" ]; then
+          echo "修正上限（${MAX_FIX_ITERATIONS}回）に達しました。手動対応が必要です。"
+          ERROR_PROMPT="${PROMPT_BASE}
+
+## 実行モード: error
+
+PR #${PR_NUMBER} のレビュー修正が上限（${MAX_FIX_ITERATIONS}回）に達しました。
+タスクの状態を \`needs_manual_review\` に更新し、エラーリカバリーの手順に従って処理してください。"
+
+          claude -p "$ERROR_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+          break
+        fi
         # ループの先頭に戻って再ポーリング
         ;;
 
