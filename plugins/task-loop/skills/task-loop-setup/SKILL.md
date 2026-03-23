@@ -44,7 +44,15 @@ task-loop-run スキルを使うための初期セットアップを行う。ユ
 
 ### Step 3: タスクディレクトリの作成
 
-設定の `tasksDir`（デフォルト: `tasks`）ディレクトリを作成する。
+設定の `tasksDir`（デフォルト: `tasks`）配下に以下のサブフォルダを作成する:
+
+```
+tasks/
+├── todo/        # 未処理のタスクファイル
+├── processing/  # 処理中のタスクファイル
+├── done/        # 完了したタスクファイル
+└── failed/      # 失敗したタスクファイル
+```
 
 ### Step 4: .gitignore の更新
 
@@ -69,7 +77,7 @@ task-loop-state.json
 **方法C: GitHub Issue からの変換**
 `gh issue list` や `gh issue view` を使ってissueを読み込み、タスクファイルに変換する。
 
-いずれの方法でも、タスクファイルフォーマット（`references/task-file-format.md`）に従って生成する。
+いずれの方法でも、タスクファイルフォーマット（`references/task-file-format.md`）に従って `tasks/todo/` に生成する。
 
 ### Step 6: タスクダッシュボードの生成
 
@@ -107,9 +115,9 @@ chmod +x run-loop.sh
   - Task.md
   - run-loop.sh
   - task-loop-instructions.md
-  - tasks/001-add-auth-module.md
-  - tasks/002-setup-database-schema.md
-  - tasks/003-implement-api-endpoints.md
+  - tasks/todo/001-add-auth-module.md
+  - tasks/todo/002-setup-database-schema.md
+  - tasks/todo/003-implement-api-endpoints.md
   - .gitignore (更新)
 
 次のステップ:

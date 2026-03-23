@@ -11,14 +11,9 @@ if [ ! -f "$INSTRUCTIONS_FILE" ]; then
 fi
 
 has_remaining_tasks() {
-  for file in "$TASKS_DIR"/*.md; do
-    [ -f "$file" ] || continue
-    local status
-    status=$(sed -n '/^---$/,/^---$/{ /^status:/{ s/^status:[[:space:]]*//; p; } }' "$file")
-    if [ -z "$status" ] || [ "$status" = "pending" ] || [ "$status" = "in_progress" ]; then
-      return 0
-    fi
-  done
+  # processing/ にファイルがあるか、todo/ にファイルがあれば残タスクあり
+  ls "$TASKS_DIR"/processing/*.md &>/dev/null && return 0
+  ls "$TASKS_DIR"/todo/*.md &>/dev/null && return 0
   return 1
 }
 
