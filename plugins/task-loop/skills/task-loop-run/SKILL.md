@@ -180,18 +180,20 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 外部ループ（`run-loop.sh`）が以下を実行する:
 
-1. `latestReviews` の数をポーリングし、レビュー提出を検知する:
+1. `reviewRequests` と `reviews` をポーリングし、レビュー完了を検知する:
    ```bash
-   gh pr view {PR番号} --json latestReviews --jq '.latestReviews | length'
+   # レビュアーがまだレビュー依頼中（処理中）か確認
+   gh pr view {PR番号} --json reviewRequests --jq '.reviewRequests[].login'
+   # レビュー済みの状態を確認
+   gh pr view {PR番号} --json reviews --jq '.reviews[] | {user: .author.login, state: .state}'
    ```
-   - Copilot はレビュー完了時に `state: "COMMENTED"` のレビューを提出する
-   - `reviewDecision`（APPROVED / CHANGES_REQUESTED）は Copilot では設定されない
-2. レビュー数が増加した → 新しいAIセッションで **review-check** モード実行
+   - `reviewRequests` にレビュアーがいる → まだレビュー中、待機継続
+   - `reviewRequests` から消え、`reviews` に `COMMENTED` 等が入った → レビュー完了
+2. レビュー完了 → 新しいAIセッションで **review-check** モード実行
    - AIがコメント内容を分析し、修正指摘の有無を判断
    - 指摘なし → AIがそのままマージ（Steps 7-8）
    - 指摘あり → AIが修正（Step 6）して終了、外部ループが再ポーリング
-3. レビュー数が変化なし → `sleep {reviewPollIntervalSeconds}` して再ポーリング
-4. `reviewMaxWaitMinutes` を超えた場合:
+3. `reviewMaxWaitMinutes` を超えた場合:
    - `autoMergeWithoutReview` が `true` → merge モード実行
    - `autoMergeWithoutReview` が `false` → ユーザーに通知して次のタスクへ
 

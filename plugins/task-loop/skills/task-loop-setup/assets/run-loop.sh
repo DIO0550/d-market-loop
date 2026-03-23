@@ -69,14 +69,15 @@ has_processing_task() {
 }
 
 # --- レビュー完了をポーリング ---
-# Copilotのレビューが完了したか（レビューを提出したか）を検知する。
+# reviewRequests にレビュアーがいる間 = まだレビュー中（待機）
+# reviewRequests からいなくなり reviews に COMMENTED 等が入った = レビュー完了
+#
 # 戻り値（最終行）:
-#   "REVIEWED"  - レビュアーがレビューを提出済み
+#   "REVIEWED"  - レビュアーがレビューを提出済み（reviews に state あり）
 #   "TIMEOUT"   - 制限時間超過
 #   "NO_PR"     - PR番号が不明
 poll_review() {
   local pr_number="$1"
-  local baseline_review_count="$2"  # ポーリング開始時点のレビュー数
 
   if [ -z "$pr_number" ]; then
     echo "NO_PR"
@@ -86,32 +87,35 @@ poll_review() {
   local max_wait_seconds=$((REVIEW_MAX_WAIT * 60))
   local elapsed=0
 
-  echo "PR #${pr_number} のレビュー待ち開始（間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）"
+  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）"
 
   while [ "$elapsed" -lt "$max_wait_seconds" ]; do
-    # latestReviews でレビュー提出済みかチェック
-    local current_review_count
-    current_review_count=$(gh pr view "$pr_number" --json latestReviews --jq '.latestReviews | length' 2>/dev/null || echo "0")
+    # reviewRequests: レビュー依頼中の人（まだレビューしていない）
+    # reviews: レビューアクション済みの人と状態
+    local still_requested
+    still_requested=$(gh pr view "$pr_number" --json reviewRequests --jq \
+      "[.reviewRequests[].login] | map(select(. == \"${REVIEWER}\")) | length" 2>/dev/null || echo "1")
 
-    if [ "$current_review_count" -gt "$baseline_review_count" ]; then
-      echo "レビュー完了を検出（レビュー数: ${baseline_review_count} → ${current_review_count}）"
-      echo "REVIEWED"
-      return
+    if [ "$still_requested" -eq 0 ]; then
+      # reviewRequests から消えた → reviews に入ったかチェック
+      local review_state
+      review_state=$(gh pr view "$pr_number" --json reviews --jq \
+        "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | last | .state // empty" 2>/dev/null || echo "")
+
+      if [ -n "$review_state" ]; then
+        echo "レビュー完了を検出（${REVIEWER}: ${review_state}）"
+        echo "REVIEWED"
+        return
+      fi
     fi
 
-    echo "  レビュー待機中... (${elapsed}/${max_wait_seconds}秒)"
+    echo "  レビュー待機中... ${REVIEWER} がレビュー中 (${elapsed}/${max_wait_seconds}秒)"
     sleep "$REVIEW_POLL_INTERVAL"
     elapsed=$((elapsed + REVIEW_POLL_INTERVAL))
   done
 
   echo "レビュータイムアウト（${REVIEW_MAX_WAIT}分経過）"
   echo "TIMEOUT"
-}
-
-# --- 現在のレビュー数を取得 ---
-get_review_count() {
-  local pr_number="$1"
-  gh pr view "$pr_number" --json latestReviews --jq '.latestReviews | length' 2>/dev/null || echo "0"
 }
 
 PROMPT_BASE="$(cat "$INSTRUCTIONS_FILE")"
@@ -159,11 +163,7 @@ Task.md の Processing エントリの Step は \`reviewing\` に更新してか
 
   while true; do
     echo "=== Phase: poll ==="
-
-    # ポーリング開始時点のレビュー数をベースラインとして記録
-    BASELINE_REVIEW_COUNT=$(get_review_count "$PR_NUMBER")
-
-    RESULT=$(poll_review "$PR_NUMBER" "$BASELINE_REVIEW_COUNT")
+    RESULT=$(poll_review "$PR_NUMBER")
     # poll_review は複数行出力する（ログ + 最終行が結果）
     REVIEW_STATUS=$(echo "$RESULT" | tail -1)
 
