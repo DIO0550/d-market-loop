@@ -14,10 +14,12 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 | モード | 実行するステップ | 説明 |
 |--------|----------------|------|
 | `implement` | Steps 1〜4 | タスク初期化、実装、コミット、PR作成。PR作成後に終了 |
-| `review-check` | Step 5→6 or 7 | コメント内容を分析し、指摘有無を判断。指摘なし→マージ、指摘あり→修正 |
-| `fix` | Step 6 | レビュー指摘の修正。修正コミット・プッシュ後に終了 |
-| `merge` | Steps 7〜8 | PRマージと状態更新。タスク完了処理後に終了 |
+| `review-check` | Step 5→6 or 7 | レビューコメントを分析し、指摘有無を判断。指摘なし→マージ、指摘あり→修正 |
 | `error` | エラーリカバリー | エラー状態の記録と後処理 |
+
+> **補足**: Copilot は `reviewDecision`（APPROVED / CHANGES_REQUESTED）を設定しない。
+> レビューが提出されたかどうか（`latestReviews` の数の変化）を shell が検知し、
+> コメント内容の分析（指摘の有無判断）は `review-check` モードで AI が行う。
 
 ## 前提条件
 
@@ -178,23 +180,18 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 外部ループ（`run-loop.sh`）が以下を実行する:
 
-1. まず `reviewDecision` をチェック（人間レビュアー対応）:
+1. `latestReviews` の数をポーリングし、レビュー提出を検知する:
    ```bash
-   gh pr view {PR番号} --json reviewDecision
+   gh pr view {PR番号} --json latestReviews --jq '.latestReviews | length'
    ```
-   - `"APPROVED"` → 新しいAIセッションで merge モード実行
-   - `"CHANGES_REQUESTED"` → 新しいAIセッションで fix モード実行
-2. `reviewDecision` がない場合、コメント数の変化を監視（Copilot等のコメントベースレビュー対応）:
-   ```bash
-   gh api repos/{owner}/{repo}/pulls/{PR番号}/comments
-   gh api repos/{owner}/{repo}/pulls/{PR番号}/reviews
-   ```
-   - 新しいコメントが付いた → 新しいAIセッションで **review-check** モード実行
-     - AIがコメント内容を分析し、修正指摘の有無を判断
-     - 指摘なし → AIがそのままマージ（Steps 7-8）
-     - 指摘あり → AIが修正（Step 6）して終了、外部ループが再ポーリング
-   - コメントが増えていない → `sleep {reviewPollIntervalSeconds}` して再ポーリング
-3. `reviewMaxWaitMinutes` を超えた場合:
+   - Copilot はレビュー完了時に `state: "COMMENTED"` のレビューを提出する
+   - `reviewDecision`（APPROVED / CHANGES_REQUESTED）は Copilot では設定されない
+2. レビュー数が増加した → 新しいAIセッションで **review-check** モード実行
+   - AIがコメント内容を分析し、修正指摘の有無を判断
+   - 指摘なし → AIがそのままマージ（Steps 7-8）
+   - 指摘あり → AIが修正（Step 6）して終了、外部ループが再ポーリング
+3. レビュー数が変化なし → `sleep {reviewPollIntervalSeconds}` して再ポーリング
+4. `reviewMaxWaitMinutes` を超えた場合:
    - `autoMergeWithoutReview` が `true` → merge モード実行
    - `autoMergeWithoutReview` が `false` → ユーザーに通知して次のタスクへ
 
