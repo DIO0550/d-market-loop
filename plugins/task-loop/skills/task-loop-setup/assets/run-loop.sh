@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TASKS_DIR="${TASKS_DIR:-tasks}"
-STATE_FILE="${STATE_FILE:-task-loop-state.json}"
 CONFIG_FILE="${CONFIG_FILE:-task-loop-config.json}"
+PR_NUMBER_FILE="${TASKS_DIR}/processing/.pr_number"
 INSTRUCTIONS_FILE="${SCRIPT_DIR}/task-loop-instructions.md"
 
 if [ ! -f "$INSTRUCTIONS_FILE" ]; then
@@ -12,19 +12,13 @@ if [ ! -f "$INSTRUCTIONS_FILE" ]; then
   exit 1
 fi
 
-# --- 設定読み込み ---
+# --- 設定読み込み (jq) ---
 read_config() {
   local key="$1"
   local default="$2"
   if [ -f "$CONFIG_FILE" ]; then
     local val
-    val=$(python3 -c "
-import json, sys
-try:
-    cfg = json.load(open('$CONFIG_FILE'))
-    print(cfg.get('$key', '$default'))
-except: print('$default')
-" 2>/dev/null)
+    val=$(jq -r ".${key} // empty" "$CONFIG_FILE" 2>/dev/null)
     echo "${val:-$default}"
   else
     echo "$default"
@@ -44,28 +38,26 @@ has_remaining_tasks() {
   return 1
 }
 
-# --- state.json からPR番号を取得 ---
-get_pr_number_from_state() {
-  if [ ! -f "$STATE_FILE" ]; then
-    echo ""
-    return
-  fi
-  python3 -c "
-import json, sys
-try:
-    state = json.load(open('$STATE_FILE'))
-    for name, task in state.get('tasks', {}).items():
-        if task.get('status') == 'in_progress' and task.get('prNumber'):
-            print(task['prNumber'])
-            sys.exit(0)
-    print('')
-except: print('')
-" 2>/dev/null
-}
-
 # --- processing中のタスクがあるかチェック ---
 has_processing_task() {
   ls "$TASKS_DIR"/processing/*.md &>/dev/null
+}
+
+# --- PR番号の読み書き ---
+save_pr_number() {
+  echo "$1" > "$PR_NUMBER_FILE"
+}
+
+read_pr_number() {
+  if [ -f "$PR_NUMBER_FILE" ]; then
+    cat "$PR_NUMBER_FILE"
+  else
+    echo ""
+  fi
+}
+
+clean_pr_number() {
+  rm -f "$PR_NUMBER_FILE"
 }
 
 # --- レビュー完了をポーリング ---
@@ -73,7 +65,7 @@ has_processing_task() {
 # reviewRequests からいなくなり reviews に COMMENTED 等が入った = レビュー完了
 #
 # 戻り値（最終行）:
-#   "REVIEWED"  - レビュアーがレビューを提出済み（reviews に state あり）
+#   "REVIEWED"  - レビュアーがレビューを提出済み
 #   "TIMEOUT"   - 制限時間超過
 #   "NO_PR"     - PR番号が不明
 poll_review() {
@@ -90,17 +82,16 @@ poll_review() {
   echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）"
 
   while [ "$elapsed" -lt "$max_wait_seconds" ]; do
-    # reviewRequests: レビュー依頼中の人（まだレビューしていない）
-    # reviews: レビューアクション済みの人と状態
+    # reviewRequests: レビュー依頼中（まだレビューしていない）
     local still_requested
-    still_requested=$(gh pr view "$pr_number" --json reviewRequests --jq \
-      "[.reviewRequests[].login] | map(select(. == \"${REVIEWER}\")) | length" 2>/dev/null || echo "1")
+    still_requested=$(gh pr view "$pr_number" --json reviewRequests \
+      --jq "[.reviewRequests[].login] | map(select(. == \"${REVIEWER}\")) | length" 2>/dev/null || echo "1")
 
     if [ "$still_requested" -eq 0 ]; then
       # reviewRequests から消えた → reviews に入ったかチェック
       local review_state
-      review_state=$(gh pr view "$pr_number" --json reviews --jq \
-        "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | last | .state // empty" 2>/dev/null || echo "")
+      review_state=$(gh pr view "$pr_number" --json reviews \
+        --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | last | .state // empty" 2>/dev/null || echo "")
 
       if [ -n "$review_state" ]; then
         echo "レビュー完了を検出（${REVIEWER}: ${review_state}）"
@@ -130,7 +121,7 @@ while true; do
   # --- Phase 1: processing中のタスクがある場合、中断復帰チェック ---
   PR_NUMBER=""
   if has_processing_task; then
-    PR_NUMBER=$(get_pr_number_from_state)
+    PR_NUMBER=$(read_pr_number)
   fi
 
   if [ -n "$PR_NUMBER" ] && has_processing_task; then
@@ -145,12 +136,13 @@ while true; do
 
 Steps 1〜4（タスク初期化、実装、コミット、PR作成）までを実行してください。
 PR作成後、レビュー待ちには入らず終了してください。
-Task.md の Processing エントリの Step は \`reviewing\` に更新してから終了してください。"
+Task.md の Processing エントリの Step は \`reviewing\` に更新してから終了してください。
+**重要**: PR作成後、PR番号を \`${PR_NUMBER_FILE}\` に書き出してください。"
 
     claude -p "$IMPLEMENT_PROMPT" --allowedTools "$ALLOWED_TOOLS"
 
     # PR番号を取得
-    PR_NUMBER=$(get_pr_number_from_state)
+    PR_NUMBER=$(read_pr_number)
 
     if [ -z "$PR_NUMBER" ]; then
       echo "Warning: PR番号が取得できませんでした。次のタスクに進みます。"
@@ -200,6 +192,7 @@ PR #${PR_NUMBER} のレビューが完了しました。
         # AIの処理結果を確認: タスクが done/ に移動していればマージ完了
         if ! has_processing_task; then
           echo "タスクがマージされました。"
+          clean_pr_number
           break
         fi
 
@@ -216,6 +209,7 @@ PR #${PR_NUMBER} のレビュー修正が上限（${MAX_FIX_ITERATIONS}回）に
 タスクの状態を \`needs_manual_review\` に更新し、エラーリカバリーの手順に従って処理してください。"
 
           claude -p "$ERROR_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+          clean_pr_number
           break
         fi
         # ループの先頭に戻って再ポーリング
@@ -226,7 +220,7 @@ PR #${PR_NUMBER} のレビュー修正が上限（${MAX_FIX_ITERATIONS}回）に
           echo "タイムアウト: autoMergeWithoutReview=true のため自動マージします。"
           MERGE_PROMPT="${PROMPT_BASE}
 
-## 実行モード: merge
+## 実行モード: review-check
 
 PR #${PR_NUMBER} のレビューがタイムアウトしました。autoMergeWithoutReview が有効なため、マージを実行します。
 Steps 7〜8（マージ、状態更新）を実行してください。"
@@ -244,11 +238,13 @@ autoMergeWithoutReview=false のため、ユーザーに通知して次のタス
 
           claude -p "$TIMEOUT_PROMPT" --allowedTools "$ALLOWED_TOOLS"
         fi
+        clean_pr_number
         break
         ;;
 
       NO_PR)
         echo "Error: PR番号が取得できませんでした。"
+        clean_pr_number
         break
         ;;
     esac

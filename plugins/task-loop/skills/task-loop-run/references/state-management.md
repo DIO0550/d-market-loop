@@ -56,7 +56,7 @@ pending ──→ in_progress ──→ completed
 | タイミング | タスクファイル | state file | Task.md |
 |-----------|--------------|------------|---------|
 | タスク開始 | `status: in_progress`, `assignedAt` 設定 | タスクエントリ追加、`status: "in_progress"` | Todo → Processing に移動（StartedAt, Branch, Step 追加） |
-| PR作成 | `prUrl` 設定 | `prNumber`, `prUrl` 設定 | — |
+| PR作成 | `prUrl` 設定 | `prNumber`, `prUrl` 設定 | — | ※ `processing/.pr_number` にPR番号を書き出す |
 | レビュー待ち | — | — | Step を `reviewing` に更新（AIセッション終了、外部ループがポーリング） |
 | レビュー修正 | — | — | Step を `fixing` に更新（新しいAIセッションで修正） |
 | マージ中 | — | — | Step を `merging` に更新 |

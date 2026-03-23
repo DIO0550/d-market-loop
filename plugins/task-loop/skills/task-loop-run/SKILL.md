@@ -169,6 +169,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 5. PR番号とURLを記録する
 6. タスクファイルのfrontmatterに `prUrl` を設定
 7. `task-loop-state.json` を更新（prNumber、prUrl）
+8. PR番号を `{tasksDir}/processing/.pr_number` に書き出す（外部ループがPR番号を参照するため）
 
 ### Step 5: レビュー待ち（外部ループが担当）
 

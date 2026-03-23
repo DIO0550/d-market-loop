@@ -60,6 +60,7 @@ tasks/
 
 ```
 task-loop-state.json
+.pr_number
 ```
 
 `.gitignore` が存在しない場合は新規作成する。
