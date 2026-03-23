@@ -14,7 +14,7 @@
 ### タスクの選択
 
 1. `processing/` にファイルがあれば、それを読み込んで続きから処理する（中断復帰）。
-2. `processing/` が空なら、`todo/` から番号順で最初の1つを `processing/` に移動して処理を開始する。
+2. `processing/` が空なら、`todo/` から番号順で最初の1つを `processing/` に移動し、タスク用ブランチを作成して処理を開始する（`git checkout -b {branchPrefix}{タスク名}`）。
 3. `todo/` も `processing/` も空なら、処理するタスクがないので終了する。
 
 ### タスク完了時
