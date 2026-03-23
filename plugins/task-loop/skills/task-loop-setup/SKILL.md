@@ -103,41 +103,7 @@ chmod +x run-loop.sh
 
 `run-loop.sh` は外部ループとして Claude CLI を繰り返し起動し、タスクを自動処理する。起動時に同じディレクトリの `task-loop-instructions.md` を読み込んでプロンプトとして渡す。残タスク（pending / in_progress）がなくなると自動で終了する。
 
-### Step 8: PostCompact hook の設定
-
-コンパクション（コンテキスト圧縮）後にエージェントが重要ファイルを再読込できるよう、Claude Code の `PostCompact` hook を設定する。
-
-1. `.claude/` ディレクトリを作成する（存在しない場合）
-2. `assets/post-compact-hook.sh` を読み取り、リポジトリルートに `post-compact-hook.sh` として書き出す
-3. 実行権限を付与する: `chmod +x post-compact-hook.sh`
-4. `.claude/settings.json` を作成（または更新）し、以下の hook 設定を追加する:
-
-```json
-{
-  "hooks": {
-    "PostCompact": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ./post-compact-hook.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-この hook により、コンパクションが発生した際に以下のファイルの再読込がエージェントに指示される:
-- `task-loop-config.json` — ループ設定
-- `Task.md` — プロジェクトContext とカンバン状態
-- `task-loop-state.json` — 実行状態
-- `tasks/processing/*.md` — 処理中のタスクファイル
-- 現在のブランチとPR番号
-
-### Step 9: セットアップ完了サマリー
+### Step 8: セットアップ完了サマリー
 
 生成したファイルの一覧と次のステップを出力する。
 
@@ -150,8 +116,6 @@ chmod +x run-loop.sh
   - Task.md
   - run-loop.sh
   - task-loop-instructions.md
-  - post-compact-hook.sh
-  - .claude/settings.json
   - tasks/todo/001-add-auth-module.md
   - tasks/todo/002-setup-database-schema.md
   - tasks/todo/003-implement-api-endpoints.md
