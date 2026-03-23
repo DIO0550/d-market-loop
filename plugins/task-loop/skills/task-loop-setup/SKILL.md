@@ -44,7 +44,15 @@ task-loop-run スキルを使うための初期セットアップを行う。ユ
 
 ### Step 3: タスクディレクトリの作成
 
-設定の `tasksDir`（デフォルト: `tasks`）ディレクトリを作成する。
+設定の `tasksDir`（デフォルト: `tasks`）配下に以下のサブフォルダを作成する:
+
+```
+tasks/
+├── todo/        # 未処理のタスクファイル
+├── processing/  # 処理中のタスクファイル
+├── done/        # 完了したタスクファイル
+└── failed/      # 失敗したタスクファイル
+```
 
 ### Step 4: .gitignore の更新
 
@@ -69,7 +77,7 @@ task-loop-state.json
 **方法C: GitHub Issue からの変換**
 `gh issue list` や `gh issue view` を使ってissueを読み込み、タスクファイルに変換する。
 
-いずれの方法でも、タスクファイルフォーマット（`references/task-file-format.md`）に従って生成する。
+いずれの方法でも、タスクファイルフォーマット（`references/task-file-format.md`）に従って `tasks/todo/` に生成する。
 
 ### Step 6: タスクダッシュボードの生成
 
@@ -77,7 +85,24 @@ task-loop-state.json
 
 このスキルが、タスクファイルとプロジェクト情報を分析して `Task.md` を自動生成する。
 
-### Step 7: セットアップ完了サマリー
+### Step 7: ループスクリプトと指示書の配置
+
+`assets/` から以下の2ファイルをリポジトリルートにコピーする。
+
+1. **run-loop.sh** — 外部ループスクリプト
+2. **task-loop-instructions.md** — Claude CLIに渡す指示書
+
+```bash
+cp assets/run-loop.sh ./run-loop.sh
+cp assets/task-loop-instructions.md ./task-loop-instructions.md
+chmod +x run-loop.sh
+```
+
+※ `assets/` のパスは、このスキルの `assets/` ディレクトリを指す。Readツールで読み取り、Writeツールでリポジトリルートに書き出すこと。
+
+`run-loop.sh` は外部ループとして Claude CLI を繰り返し起動し、タスクを自動処理する。起動時に同じディレクトリの `task-loop-instructions.md` を読み込んでプロンプトとして渡す。残タスク（pending / in_progress）がなくなると自動で終了する。
+
+### Step 8: セットアップ完了サマリー
 
 生成したファイルの一覧と次のステップを出力する。
 
@@ -88,15 +113,17 @@ task-loop-state.json
 生成したファイル:
   - task-loop-config.json
   - Task.md
-  - tasks/001-add-auth-module.md
-  - tasks/002-setup-database-schema.md
-  - tasks/003-implement-api-endpoints.md
+  - run-loop.sh
+  - task-loop-instructions.md
+  - tasks/todo/001-add-auth-module.md
+  - tasks/todo/002-setup-database-schema.md
+  - tasks/todo/003-implement-api-endpoints.md
   - .gitignore (更新)
 
 次のステップ:
   1. 生成されたタスクファイルの内容を確認・修正してください
   2. タスクダッシュボード（Task.md）の内容を確認してください
-  3. task-loop-run スキルを実行してタスクの自動実行を開始してください
+  3. ./run-loop.sh を実行してタスクの自動実行を開始してください
 ```
 
 ## タスク分割ガイド
