@@ -77,43 +77,16 @@ task-loop-state.json
 
 このスキルが、タスクファイルとプロジェクト情報を分析して `Task.md` を自動生成する。
 
-### Step 7: run-loop.sh の生成
+### Step 7: run-loop.sh の配置
 
-リポジトリルートに `run-loop.sh` を生成する。このスクリプトは外部ループとして Claude CLI を繰り返し起動し、タスクを自動処理する。
+`assets/run-loop.sh` をリポジトリルートにコピーし、実行権限を付与する。
 
-生成する内容:
 ```bash
-#!/bin/bash
-set -euo pipefail
-
-TASKS_DIR="${TASKS_DIR:-tasks}"
-
-has_remaining_tasks() {
-  for file in "$TASKS_DIR"/*.md; do
-    [ -f "$file" ] || continue
-    local status
-    status=$(sed -n '/^---$/,/^---$/{ /^status:/{ s/^status:[[:space:]]*//; p; } }' "$file")
-    if [ -z "$status" ] || [ "$status" = "pending" ] || [ "$status" = "in_progress" ]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-while true; do
-  if ! has_remaining_tasks; then
-    echo "全タスクが処理済みです"
-    break
-  fi
-
-  claude -p "/task-loop-run を実行してください。maxTasks=1 で1タスクだけ処理してください。" --allowedTools "Bash(git:*),Bash(gh:*),Read,Write,Edit,Glob,Grep"
-done
-```
-
-生成後に実行権限を付与する:
-```bash
+cp "$(dirname "$0")/../plugins/task-loop/skills/task-loop-setup/assets/run-loop.sh" ./run-loop.sh
 chmod +x run-loop.sh
 ```
+
+このスクリプトは外部ループとして Claude CLI を繰り返し起動し、タスクを自動処理する。残タスク（pending / in_progress）がなくなると自動で終了する。
 
 ### Step 8: セットアップ完了サマリー
 
