@@ -7,6 +7,20 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 `tasks/` フォルダのタスクファイルを順番に処理し、各タスクについて 実装 → コミット → PR → レビュー → 修正 → マージ のサイクルを自動実行する。
 
+## 実行モード
+
+外部ループ（`run-loop.sh`）からモード別に呼び出される。レビューのポーリング待ちはシェル側が担当し、AIセッション内では `sleep` によるポーリングを行わない。
+
+| モード | 実行するステップ | 説明 |
+|--------|----------------|------|
+| `implement` | Steps 1〜4 | タスク初期化、実装、コミット、PR作成。PR作成後に終了 |
+| `review-check` | Step 5→6 or 7 | レビューコメントを分析し、指摘有無を判断。指摘なし→マージ、指摘あり→修正 |
+| `error` | エラーリカバリー | エラー状態の記録と後処理 |
+
+> **補足**: Copilot は `reviewDecision`（APPROVED / CHANGES_REQUESTED）を設定しない。
+> レビューが提出されたかどうか（`latestReviews` の数の変化）を shell が検知し、
+> コメント内容の分析（指摘の有無判断）は `review-check` モードで AI が行う。
+
 ## 前提条件
 
 実行前に以下を確認する。満たされていない場合はユーザーに案内して停止する。
@@ -155,25 +169,33 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 5. PR番号とURLを記録する
 6. タスクファイルのfrontmatterに `prUrl` を設定
 7. `task-loop-state.json` を更新（prNumber、prUrl）
+8. PR番号を `{tasksDir}/processing/.pr_number` に書き出す（外部ループがPR番号を参照するため）
 
-### Step 5: レビュー待ち
+### Step 5: レビュー待ち（外部ループが担当）
+
+> **注意**: このステップは `run-loop.sh`（外部シェルループ）が担当する。
+> AI セッション内では `sleep` によるポーリングを**行わない**。
 
 0. Task.md の Processing エントリの Step を `reviewing` に更新
-1. レビュー結果をポーリングする:
+1. **AI セッションはここで終了する** — PR作成後、レビュー待ちには入らない
+
+外部ループ（`run-loop.sh`）が以下を実行する:
+
+1. `reviewRequests` と `reviews` をポーリングし、レビュー完了を検知する:
    ```bash
-   gh pr view {PR番号} --json reviews,latestReviews,reviewDecision
+   # レビュアーがまだレビュー依頼中（処理中）か確認
+   gh pr view {PR番号} --json reviewRequests --jq '.reviewRequests[].login'
+   # レビュー済みの状態を確認
+   gh pr view {PR番号} --json reviews --jq '.reviews[] | {user: .author.login, state: .state}'
    ```
-2. レスポンスを解析する:
-   - `reviewDecision` が `"APPROVED"` → Step 7（マージ）へ
-   - `reviewDecision` が `"CHANGES_REQUESTED"` → Step 6（修正）へ
-   - latestReviews にレビューがあり、コメントに修正指摘が含まれる → Step 6（修正）へ
-   - レビューがまだない → 待機して再ポーリング
-3. 待機方法:
-   ```bash
-   sleep {reviewPollIntervalSeconds}
-   ```
-4. `reviewMaxWaitMinutes` を超えた場合:
-   - `autoMergeWithoutReview` が `true` → Step 7（マージ）へ
+   - `reviewRequests` にレビュアーがいる → まだレビュー中、待機継続
+   - `reviewRequests` から消え、`reviews` に `COMMENTED` 等が入った → レビュー完了
+2. レビュー完了 → 新しいAIセッションで **review-check** モード実行
+   - AIがコメント内容を分析し、修正指摘の有無を判断
+   - 指摘なし → AIがそのままマージ（Steps 7-8）
+   - 指摘あり → AIが修正（Step 6）して終了、外部ループが再ポーリング
+3. `reviewMaxWaitMinutes` を超えた場合:
+   - `autoMergeWithoutReview` が `true` → merge モード実行
    - `autoMergeWithoutReview` が `false` → ユーザーに通知して次のタスクへ
 
 ### Step 6: レビュー指摘修正
@@ -192,11 +214,10 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
    git commit -m "fix: address review comments for {title}"
    git push
    ```
-5. 修正回数をカウントし、`maxFixIterations` に達した場合:
-   - タスクの状態を `"needs_manual_review"` としてユーザーに通知
-   - `stopOnError` が `true` → ループ終了
-   - `stopOnError` が `false` → 次のタスクへ
-6. まだ上限に達していない場合 → Step 5（レビュー待ち）に戻る
+5. 修正回数のカウントと上限チェックは外部ループ（`run-loop.sh`）が管理する
+6. 修正コミット・プッシュ後、**レビュー待ちには入らず AIセッションを終了する**
+   - Task.md の Processing エントリの Step を `reviewing` に更新してから終了
+   - 外部ループが再度レビューポーリングを行い、必要に応じて再度 fix モードで呼び出す
 
 ### Step 7: マージ
 
