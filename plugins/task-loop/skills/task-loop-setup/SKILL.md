@@ -77,16 +77,22 @@ task-loop-state.json
 
 このスキルが、タスクファイルとプロジェクト情報を分析して `Task.md` を自動生成する。
 
-### Step 7: run-loop.sh の配置
+### Step 7: ループスクリプトと指示書の配置
 
-`assets/run-loop.sh` をリポジトリルートにコピーし、実行権限を付与する。
+`assets/` から以下の2ファイルをリポジトリルートにコピーする。
+
+1. **run-loop.sh** — 外部ループスクリプト
+2. **task-loop-instructions.md** — Claude CLIに渡す指示書
 
 ```bash
-cp "$(dirname "$0")/../plugins/task-loop/skills/task-loop-setup/assets/run-loop.sh" ./run-loop.sh
+cp assets/run-loop.sh ./run-loop.sh
+cp assets/task-loop-instructions.md ./task-loop-instructions.md
 chmod +x run-loop.sh
 ```
 
-このスクリプトは外部ループとして Claude CLI を繰り返し起動し、タスクを自動処理する。残タスク（pending / in_progress）がなくなると自動で終了する。
+※ `assets/` のパスは、このスキルの `assets/` ディレクトリを指す。Readツールで読み取り、Writeツールでリポジトリルートに書き出すこと。
+
+`run-loop.sh` は外部ループとして Claude CLI を繰り返し起動し、タスクを自動処理する。起動時に同じディレクトリの `task-loop-instructions.md` を読み込んでプロンプトとして渡す。残タスク（pending / in_progress）がなくなると自動で終了する。
 
 ### Step 8: セットアップ完了サマリー
 
@@ -100,6 +106,7 @@ chmod +x run-loop.sh
   - task-loop-config.json
   - Task.md
   - run-loop.sh
+  - task-loop-instructions.md
   - tasks/001-add-auth-module.md
   - tasks/002-setup-database-schema.md
   - tasks/003-implement-api-endpoints.md
