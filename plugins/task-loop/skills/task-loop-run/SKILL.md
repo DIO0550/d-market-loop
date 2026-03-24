@@ -11,13 +11,29 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 外部ループ（`run-loop.sh`）からモード別に呼び出される。レビューのポーリング待ちはシェル側が担当し、AIセッション内では `sleep` によるポーリングを行わない。
 
-| モード | 参照するステップファイル | 説明 |
+| モード | 読み込むステップファイル | 説明 |
 |--------|------------------------|------|
-| `implement` | `steps/implement.md` | タスク初期化、実装、コミット、PR作成。PR作成後に終了 |
-| `review-check` | `steps/review-check.md` | レビューコメントを分析し、指摘有無を判断。指摘なし→マージ、指摘あり→修正 |
-| `error` | `steps/loop-control.md` | エラー状態の記録と後処理 |
+| `implement` | `step1-init` → `step2-implement` → `step3-commit` → `step4-pr` → `step5-review-wait` | タスク初期化〜PR作成。PR作成後に終了 |
+| `review-check` | `step6-fix` or `step7-merge` → `step8-update-state` | レビュー分析。指摘あり→修正、なし→マージ |
+| `error` | `error-recovery` | エラー状態の記録と後処理 |
 
-**実行手順**: モードに対応するステップファイルを読み込み、その指示に従って処理する。マージが必要な場合は `steps/merge.md` も読み込む。ループ制御・エラーリカバリーは `steps/loop-control.md` を参照する。
+**実行手順**: モードに対応するステップファイルを `steps/` から順に読み込み、その指示に従って処理する。各ステップは1ファイル1責務で分割されている。
+
+### ステップファイル一覧
+
+| ファイル | 内容 |
+|---------|------|
+| `steps/step1-init.md` | タスク初期化（ブランチ作成、状態更新） |
+| `steps/step2-implement.md` | 実装（コード変更、テスト実行） |
+| `steps/step3-commit.md` | コミット（ステージング、メッセージ作成） |
+| `steps/step4-pr.md` | PR作成（プッシュ、PR本文生成、レビュアー設定） |
+| `steps/step5-review-wait.md` | レビュー待ち（外部ループが担当） |
+| `steps/step6-fix.md` | レビュー指摘修正 |
+| `steps/step7-merge.md` | PRマージ |
+| `steps/step8-update-state.md` | 状態更新（タスク完了記録） |
+| `steps/step9-loop-check.md` | ループ条件チェック |
+| `steps/error-recovery.md` | エラーリカバリー |
+| `steps/summary.md` | 終了サマリー出力 |
 
 > **補足**: Copilot は `reviewDecision`（APPROVED / CHANGES_REQUESTED）を設定しない。
 > レビューが提出されたかどうか（`latestReviews` の数の変化）を shell が検知し、
@@ -92,4 +108,4 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 4. `status` が未設定または `pending` のタスクを「未処理」とする
 5. `completed`、`failed`、`skipped` のタスクはスキップする
 6. 最初の未処理タスクを選択する
-7. 未処理タスクがなければループ終了（`steps/loop-control.md` の終了サマリーへ）
+7. 未処理タスクがなければループ終了（`steps/summary.md` の終了サマリーへ）
