@@ -1,4 +1,4 @@
-# Step 2: 実装
+# 実装
 
 1. タスクファイルの全セクションを読む（Description、Requirements、Files to Modify、Test Cases、Acceptance Criteria 等）
 2. Task.md が読み込まれている場合:

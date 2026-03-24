@@ -1,4 +1,4 @@
-# Step 7: マージ
+# マージ
 
 0. Task.md の Processing エントリの Step を `merging` に更新
 1. PRをマージする:

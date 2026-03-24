@@ -1,4 +1,4 @@
-# Step 6: レビュー指摘修正
+# レビュー指摘修正
 
 0. Task.md の Processing エントリの Step を `fixing` に更新
 1. PRのレビューコメントを取得する:

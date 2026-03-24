@@ -13,8 +13,8 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 | モード | 読み込むステップファイル | 説明 |
 |--------|------------------------|------|
-| `implement` | `step1-init` → `step2-implement` → `step3-commit` → `step4-pr` → `step5-review-wait` | タスク初期化〜PR作成。PR作成後に終了 |
-| `review-check` | `step6-fix` or `step7-merge` → `step8-update-state` | レビュー分析。指摘あり→修正、なし→マージ |
+| `implement` | `init` → `implement` → `commit` → `pr` → `review-wait` | タスク初期化〜PR作成。PR作成後に終了 |
+| `review-check` | `fix` or `merge` → `update-state` | レビュー分析。指摘あり→修正、なし→マージ |
 | `error` | `error-recovery` | エラー状態の記録と後処理 |
 
 **実行手順**: モードに対応するステップファイルを `steps/` から順に読み込み、その指示に従って処理する。各ステップは1ファイル1責務で分割されている。
@@ -23,15 +23,15 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 | ファイル | 内容 |
 |---------|------|
-| `steps/step1-init.md` | タスク初期化（ブランチ作成、状態更新） |
-| `steps/step2-implement.md` | 実装（コード変更、テスト実行） |
-| `steps/step3-commit.md` | コミット（ステージング、メッセージ作成） |
-| `steps/step4-pr.md` | PR作成（プッシュ、PR本文生成、レビュアー設定） |
-| `steps/step5-review-wait.md` | レビュー待ち（外部ループが担当） |
-| `steps/step6-fix.md` | レビュー指摘修正 |
-| `steps/step7-merge.md` | PRマージ |
-| `steps/step8-update-state.md` | 状態更新（タスク完了記録） |
-| `steps/step9-loop-check.md` | ループ条件チェック |
+| `steps/init.md` | タスク初期化（ブランチ作成、状態更新） |
+| `steps/implement.md` | 実装（コード変更、テスト実行） |
+| `steps/commit.md` | コミット（ステージング、メッセージ作成） |
+| `steps/pr.md` | PR作成（プッシュ、PR本文生成、レビュアー設定） |
+| `steps/review-wait.md` | レビュー待ち（外部ループが担当） |
+| `steps/fix.md` | レビュー指摘修正 |
+| `steps/merge.md` | PRマージ |
+| `steps/update-state.md` | 状態更新（タスク完了記録） |
+| `steps/loop-check.md` | ループ条件チェック |
 | `steps/error-recovery.md` | エラーリカバリー |
 | `steps/summary.md` | 終了サマリー出力 |
 

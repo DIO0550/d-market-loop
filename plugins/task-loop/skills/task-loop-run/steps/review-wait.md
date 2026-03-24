@@ -1,4 +1,4 @@
-# Step 5: レビュー待ち（外部ループが担当）
+# レビュー待ち（外部ループが担当）
 
 > **注意**: このステップは `run-loop.sh`（外部シェルループ）が担当する。
 > AI セッション内では `sleep` によるポーリングを**行わない**。
@@ -19,8 +19,8 @@
    - `reviewRequests` から消え、`reviews` に `COMMENTED` 等が入った → レビュー完了
 2. レビュー完了 → 新しいAIセッションで **review-check** モード実行
    - AIがコメント内容を分析し、修正指摘の有無を判断
-   - 指摘なし → AIがそのままマージ（`steps/step7-merge.md`）
-   - 指摘あり → AIが修正（`steps/step6-fix.md`）して終了、外部ループが再ポーリング
+   - 指摘なし → AIがそのままマージ（`steps/merge.md`）
+   - 指摘あり → AIが修正（`steps/fix.md`）して終了、外部ループが再ポーリング
 3. `reviewMaxWaitMinutes` を超えた場合:
    - `autoMergeWithoutReview` が `true` → merge モード実行
    - `autoMergeWithoutReview` が `false` → ユーザーに通知して次のタスクへ

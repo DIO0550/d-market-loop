@@ -1,4 +1,4 @@
-# Step 8: 状態更新
+# 状態更新
 
 1. タスクファイルのfrontmatterを更新:
    - `status: completed`
