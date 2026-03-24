@@ -6,6 +6,7 @@ TASKS_DIR="${TASKS_DIR:-tasks}"
 CONFIG_FILE="${CONFIG_FILE:-task-loop-config.json}"
 PR_NUMBER_FILE="${TASKS_DIR}/processing/.pr_number"
 INSTRUCTIONS_FILE="${SCRIPT_DIR}/task-loop-instructions.md"
+SESSION_LOGS_DIR="${SESSION_LOGS_DIR:-session-logs}"
 
 if [ ! -f "$INSTRUCTIONS_FILE" ]; then
   echo "Error: 指示書が見つかりません: $INSTRUCTIONS_FILE" >&2
@@ -30,12 +31,65 @@ REVIEW_MAX_WAIT=$(read_config "reviewMaxWaitMinutes" "30")
 AUTO_MERGE_WITHOUT_REVIEW=$(read_config "autoMergeWithoutReview" "false")
 MAX_FIX_ITERATIONS=$(read_config "maxFixIterations" "3")
 REVIEWER=$(read_config "reviewer" "copilot")
+SESSION_LOGS_DIR=$(read_config "sessionLogsDir" "$SESSION_LOGS_DIR")
+
+# --- セッションログ ---
+mkdir -p "$SESSION_LOGS_DIR"
+
+run_claude_session() {
+  local mode="$1"
+  local prompt="$2"
+  local task_name="${3:-unknown}"
+  local timestamp
+  timestamp=$(date +"%Y-%m-%d_%H%M%S")
+  local log_file="${SESSION_LOGS_DIR}/${timestamp}_${mode}_${task_name}.md"
+
+  echo "--- Session log: ${log_file} ---"
+
+  {
+    echo "---"
+    echo "mode: \"${mode}\""
+    echo "task: \"${task_name}\""
+    echo "startedAt: \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\""
+    echo "---"
+    echo ""
+    echo "# Session Output: ${mode} / ${task_name}"
+    echo ""
+    echo '```'
+  } > "$log_file"
+
+  claude -p "$prompt" --allowedTools "$ALLOWED_TOOLS" 2>&1 | tee -a "$log_file"
+  local exit_code=${PIPESTATUS[0]}
+
+  {
+    echo '```'
+    echo ""
+    echo "endedAt: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    echo "exitCode: ${exit_code}"
+  } >> "$log_file"
+
+  return $exit_code
+}
 
 # --- タスク残存チェック ---
 has_remaining_tasks() {
   ls "$TASKS_DIR"/processing/*.md &>/dev/null && return 0
   ls "$TASKS_DIR"/todo/*.md &>/dev/null && return 0
   return 1
+}
+
+# --- 現在のタスク名を取得 ---
+get_current_task_name() {
+  local task_file
+  task_file=$(ls "$TASKS_DIR"/processing/*.md 2>/dev/null | head -1)
+  if [ -z "$task_file" ]; then
+    task_file=$(ls "$TASKS_DIR"/todo/*.md 2>/dev/null | head -1)
+  fi
+  if [ -n "$task_file" ]; then
+    basename "$task_file" .md
+  else
+    echo "unknown"
+  fi
 }
 
 # --- processing中のタスクがあるかチェック ---
@@ -139,7 +193,7 @@ PR作成後、レビュー待ちには入らず終了してください。
 Task.md の Processing エントリの Step は \`reviewing\` に更新してから終了してください。
 **重要**: PR作成後、PR番号を \`${PR_NUMBER_FILE}\` に書き出してください。"
 
-    claude -p "$IMPLEMENT_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+    run_claude_session "implement" "$IMPLEMENT_PROMPT" "$(get_current_task_name)"
 
     # PR番号を取得
     PR_NUMBER=$(read_pr_number)
@@ -187,7 +241,7 @@ PR #${PR_NUMBER} のレビューが完了しました。
 
 修正回数: ${FIX_COUNT}/${MAX_FIX_ITERATIONS}"
 
-        claude -p "$REVIEW_CHECK_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+        run_claude_session "review-check" "$REVIEW_CHECK_PROMPT" "$(get_current_task_name)"
 
         # AIの処理結果を確認: タスクが done/ に移動していればマージ完了
         if ! has_processing_task; then
@@ -208,7 +262,7 @@ PR #${PR_NUMBER} のレビューが完了しました。
 PR #${PR_NUMBER} のレビュー修正が上限（${MAX_FIX_ITERATIONS}回）に達しました。
 タスクの状態を \`needs_manual_review\` に更新し、エラーリカバリーの手順に従って処理してください。"
 
-          claude -p "$ERROR_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+          run_claude_session "error" "$ERROR_PROMPT" "$(get_current_task_name)"
           clean_pr_number
           break
         fi
@@ -225,7 +279,7 @@ PR #${PR_NUMBER} のレビュー修正が上限（${MAX_FIX_ITERATIONS}回）に
 PR #${PR_NUMBER} のレビューがタイムアウトしました。autoMergeWithoutReview が有効なため、マージを実行します。
 Steps 7〜8（マージ、状態更新）を実行してください。"
 
-          claude -p "$MERGE_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+          run_claude_session "merge" "$MERGE_PROMPT" "$(get_current_task_name)"
         else
           echo "タイムアウト: レビューが得られませんでした。次のタスクに進みます。"
           TIMEOUT_PROMPT="${PROMPT_BASE}
@@ -236,7 +290,7 @@ PR #${PR_NUMBER} のレビューがタイムアウトしました（${REVIEW_MAX
 autoMergeWithoutReview=false のため、ユーザーに通知して次のタスクへ進む処理を行ってください。
 エラーリカバリーの手順に従ってタスクの状態を更新してください。"
 
-          claude -p "$TIMEOUT_PROMPT" --allowedTools "$ALLOWED_TOOLS"
+          run_claude_session "timeout-error" "$TIMEOUT_PROMPT" "$(get_current_task_name)"
         fi
         clean_pr_number
         break

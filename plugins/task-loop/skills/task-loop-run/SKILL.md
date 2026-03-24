@@ -34,6 +34,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 | `steps/loop-check.md` | ループ条件チェック |
 | `steps/error-recovery.md` | エラーリカバリー |
 | `steps/summary.md` | 終了サマリー出力 |
+| `steps/session-export.md` | セッションレポートのMarkdown書き出し |
 
 > **補足**: Copilot は `reviewDecision`（APPROVED / CHANGES_REQUESTED）を設定しない。
 > レビューが提出されたかどうか（`latestReviews` の数の変化）を shell が検知し、

@@ -22,7 +22,8 @@
   "reviewMaxWaitMinutes": 30,
   "maxFixIterations": 3,
   "autoMergeWithoutReview": false,
-  "prBodyFooter": "Automated by task-loop-run"
+  "prBodyFooter": "Automated by task-loop-run",
+  "sessionLogsDir": "session-logs"
 }
 ```
 
@@ -46,6 +47,7 @@
 | `maxFixIterations` | number | `3` | レビュー指摘修正の最大回数 |
 | `autoMergeWithoutReview` | boolean | `false` | レビュータイムアウト時に自動マージするか |
 | `prBodyFooter` | string | `"Automated by task-loop-run"` | PR本文のフッター |
+| `sessionLogsDir` | string | `"session-logs"` | セッションログの出力ディレクトリ（リポジトリルートからの相対パス） |
 
 ## ループ条件
 
