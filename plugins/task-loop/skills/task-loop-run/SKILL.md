@@ -11,11 +11,29 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 外部ループ（`run-loop.sh`）からモード別に呼び出される。レビューのポーリング待ちはシェル側が担当し、AIセッション内では `sleep` によるポーリングを行わない。
 
-| モード | 実行するステップ | 説明 |
-|--------|----------------|------|
-| `implement` | Steps 1〜4 | タスク初期化、実装、コミット、PR作成。PR作成後に終了 |
-| `review-check` | Step 5→6 or 7 | レビューコメントを分析し、指摘有無を判断。指摘なし→マージ、指摘あり→修正 |
-| `error` | エラーリカバリー | エラー状態の記録と後処理 |
+| モード | 読み込むステップファイル | 説明 |
+|--------|------------------------|------|
+| `implement` | `init` → `implement` → `commit` → `pr` → `review-wait` | タスク初期化〜PR作成。PR作成後に終了 |
+| `review-check` | `fix` or `merge` → `update-state` | レビュー分析。指摘あり→修正、なし→マージ |
+| `error` | `error-recovery` | エラー状態の記録と後処理 |
+
+**実行手順**: モードに対応するステップファイルを `steps/` から順に読み込み、その指示に従って処理する。各ステップは1ファイル1責務で分割されている。
+
+### ステップファイル一覧
+
+| ファイル | 内容 |
+|---------|------|
+| `steps/init.md` | タスク初期化（ブランチ作成、状態更新） |
+| `steps/implement.md` | 実装（コード変更、テスト実行） |
+| `steps/commit.md` | コミット（ステージング、メッセージ作成） |
+| `steps/pr.md` | PR作成（プッシュ、PR本文生成、レビュアー設定） |
+| `steps/review-wait.md` | レビュー待ち（外部ループが担当） |
+| `steps/fix.md` | レビュー指摘修正 |
+| `steps/merge.md` | PRマージ |
+| `steps/update-state.md` | 状態更新（タスク完了記録） |
+| `steps/loop-check.md` | ループ条件チェック |
+| `steps/error-recovery.md` | エラーリカバリー |
+| `steps/summary.md` | 終了サマリー出力 |
 
 > **補足**: Copilot は `reviewDecision`（APPROVED / CHANGES_REQUESTED）を設定しない。
 > レビューが提出されたかどうか（`latestReviews` の数の変化）を shell が検知し、
@@ -78,7 +96,6 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
    - Task.md の更新も全てスキップする
    - タスクファイルの内容のみに基づいて実装する
 
-
 ## 中断復帰チェック
 
 ループ開始前に `task-loop-state.json` を確認する。`status: "in_progress"` のタスクがあれば、中断からの復帰手順（`references/state-management.md`）に従って適切なステップから再開する。
@@ -91,232 +108,4 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 4. `status` が未設定または `pending` のタスクを「未処理」とする
 5. `completed`、`failed`、`skipped` のタスクはスキップする
 6. 最初の未処理タスクを選択する
-7. 未処理タスクがなければループ終了（終了サマリーへ）
-
-## メインループ
-
-選択したタスクに対して以下のステップを実行する。
-
-### Step 1: タスク初期化
-
-1. タスクファイルを全文読み込む
-2. frontmatterから `title`、`commitPrefix` を取得する（titleがない場合はファイル名のハイフン区切り部分を使用）
-3. ベースブランチが最新であることを確認する:
-   ```bash
-   git checkout {baseBranch}
-   git pull origin {baseBranch}
-   ```
-4. タスク用ブランチを作成する:
-   ```bash
-   git checkout -b {branchPrefix}{ファイル名から拡張子を除いたもの}
-   ```
-   例: `task/001-add-auth`
-5. タスクファイルのfrontmatterを `status: in_progress` に更新、`assignedAt` に現在時刻を設定
-6. `task-loop-state.json` にタスクエントリを追加（status: "in_progress"、startedAt）
-7. Task.md を更新: タスクエントリを **Todo** → **Processing** に移動
-   - `Priority` フィールドを削除
-   - `StartedAt`（現在時刻）、`Branch`（ブランチ名）、`Step: implementing` を追加
-   - frontmatter の `updatedAt` を更新
-
-### Step 2: 実装
-
-1. タスクファイルの全セクションを読む（Description、Requirements、Files to Modify、Test Cases、Acceptance Criteria 等）
-2. Task.md が読み込まれている場合:
-   - Context の Tech Stack・Architecture・Constraints に従う
-   - Shared Context を確認し、先行タスクとの整合性を維持する
-   - Notes の規約・注意点に従ったコードを書く
-3. タスクの内容に従って実装を行う
-   - コードの読み取り、ファイルの作成・編集、必要に応じてコマンド実行
-   - Test Cases が指定されている場合、テスト通過＝実装完了として扱う
-4. タスクファイルに Test Command が指定されている場合:
-   - テストを実行する
-   - テストが失敗した場合は修正して再実行する
-   - 3回修正してもテストが通らない場合はエラーとして扱う（エラーリカバリーへ）
-
-### Step 3: コミット
-
-1. 変更をステージングする:
-   ```bash
-   git add -A
-   ```
-2. コミットメッセージを作成する:
-   - フォーマット: `{commitPrefix}: {title}`
-   - commitPrefixはタスクファイルのfrontmatterから取得（デフォルト: `feat`）
-   - 例: `feat: 認証モジュールを追加する`
-3. コミットを実行する:
-   ```bash
-   git commit -m "{コミットメッセージ}"
-   ```
-
-### Step 4: PR作成
-
-1. ブランチをプッシュする:
-   ```bash
-   git push -u origin {ブランチ名}
-   ```
-2. PR本文を生成する:
-   - タスクの Description を要約
-   - 変更内容の箇条書き
-   - テスト方法（Test Command があれば記載）
-   - フッター（設定の `prBodyFooter`）
-3. PRを作成する:
-   ```bash
-   gh pr create --title "{commitPrefix}: {title}" --body "{PR本文}" --base {baseBranch}
-   ```
-4. レビュアーを設定する:
-   ```bash
-   gh pr edit {PR番号} --add-reviewer {reviewer}
-   ```
-5. PR番号とURLを記録する
-6. タスクファイルのfrontmatterに `prUrl` を設定
-7. `task-loop-state.json` を更新（prNumber、prUrl）
-8. PR番号を `{tasksDir}/processing/.pr_number` に書き出す（外部ループがPR番号を参照するため）
-
-### Step 5: レビュー待ち（外部ループが担当）
-
-> **注意**: このステップは `run-loop.sh`（外部シェルループ）が担当する。
-> AI セッション内では `sleep` によるポーリングを**行わない**。
-
-0. Task.md の Processing エントリの Step を `reviewing` に更新
-1. **AI セッションはここで終了する** — PR作成後、レビュー待ちには入らない
-
-外部ループ（`run-loop.sh`）が以下を実行する:
-
-1. `reviewRequests` と `reviews` をポーリングし、レビュー完了を検知する:
-   ```bash
-   # レビュアーがまだレビュー依頼中（処理中）か確認
-   gh pr view {PR番号} --json reviewRequests --jq '.reviewRequests[].login'
-   # レビュー済みの状態を確認
-   gh pr view {PR番号} --json reviews --jq '.reviews[] | {user: .author.login, state: .state}'
-   ```
-   - `reviewRequests` にレビュアーがいる → まだレビュー中、待機継続
-   - `reviewRequests` から消え、`reviews` に `COMMENTED` 等が入った → レビュー完了
-2. レビュー完了 → 新しいAIセッションで **review-check** モード実行
-   - AIがコメント内容を分析し、修正指摘の有無を判断
-   - 指摘なし → AIがそのままマージ（Steps 7-8）
-   - 指摘あり → AIが修正（Step 6）して終了、外部ループが再ポーリング
-3. `reviewMaxWaitMinutes` を超えた場合:
-   - `autoMergeWithoutReview` が `true` → merge モード実行
-   - `autoMergeWithoutReview` が `false` → ユーザーに通知して次のタスクへ
-
-### Step 6: レビュー指摘修正
-
-0. Task.md の Processing エントリの Step を `fixing` に更新
-1. PRのレビューコメントを取得する:
-   ```bash
-   gh api repos/{owner}/{repo}/pulls/{PR番号}/comments
-   gh pr view {PR番号} --json reviews
-   ```
-2. 各コメントの指摘内容を解析する
-3. 指摘に対して修正を実装する
-4. 修正をコミットする:
-   ```bash
-   git add -A
-   git commit -m "fix: address review comments for {title}"
-   git push
-   ```
-5. 修正回数のカウントと上限チェックは外部ループ（`run-loop.sh`）が管理する
-6. 修正コミット・プッシュ後、**レビュー待ちには入らず AIセッションを終了する**
-   - Task.md の Processing エントリの Step を `reviewing` に更新してから終了
-   - 外部ループが再度レビューポーリングを行い、必要に応じて再度 fix モードで呼び出す
-
-### Step 7: マージ
-
-0. Task.md の Processing エントリの Step を `merging` に更新
-1. PRをマージする:
-   ```bash
-   gh pr merge {PR番号} --{mergeStrategy} --delete-branch
-   ```
-   ※ `deleteBranchAfterMerge` が `false` の場合は `--delete-branch` を省略
-2. マージが失敗した場合（コンフリクト等）:
-   - リベースを試みる:
-     ```bash
-     git fetch origin {baseBranch}
-     git rebase origin/{baseBranch}
-     ```
-   - リベース成功 → プッシュしてマージを再試行
-   - リベース失敗 → エラーリカバリーへ
-3. ベースブランチに戻る:
-   ```bash
-   git checkout {baseBranch}
-   git pull origin {baseBranch}
-   ```
-
-### Step 8: 状態更新
-
-1. タスクファイルのfrontmatterを更新:
-   - `status: completed`
-   - `completedAt` に現在時刻を設定
-2. `task-loop-state.json` を更新:
-   - タスクの `status` を `"completed"` に
-   - `completedAt` を設定
-   - `tasksCompleted` カウンタを+1
-   - `lastUpdatedAt` を更新
-3. Task.md を更新: タスクエントリを **Processing** → **Done** に移動
-   - チェックボックスを `- [x]` に変更
-   - `StartedAt`、`Branch`、`Step` フィールドを削除
-   - `CompletedAt`（現在時刻）、`PR`（PR URL）を追加
-   - frontmatter の `updatedAt` を更新
-4. 状態更新をコミットする:
-   ```bash
-   git add {タスクファイル} {stateFile} {planFile}
-   git commit -m "chore: mark {ファイル名} as completed"
-   git push origin {baseBranch}
-   ```
-
-### Step 9: ループ条件チェック
-
-以下の条件を順にチェックし、いずれかに該当すればループを終了する:
-
-1. **残タスクなし**: 未処理のタスクファイルがない → 終了
-2. **maxTasks到達**: 処理したタスク数 >= `maxTasks`（maxTasks > 0 の場合） → 終了
-3. **時間制限超過**: ループ開始からの経過時間 > `timeLimitMinutes`（timeLimitMinutes > 0 の場合） → 終了
-
-条件に該当しなければ、タスク発見に戻り次のタスクを処理する。
-
-## エラーリカバリー
-
-| エラー | 対処 |
-|--------|------|
-| 実装時にテストが通らない | 3回まで修正を試みる。それでも失敗 → `status: failed` に更新 |
-| git push が失敗 | 認証を確認、1回リトライ |
-| PR作成が失敗 | 同名ブランチのPRが既にあるか確認。あれば再利用 |
-| レビュータイムアウト | `autoMergeWithoutReview` の設定に従う |
-| 修正上限到達 | `needs_manual_review` として記録 |
-| マージコンフリクト | リベースを試みる。失敗 → `status: failed` |
-| gh CLI未認証 | エラーメッセージを出して即座に終了 |
-
-いずれのエラーでも:
-- `task-loop-state.json` にエラー状態を記録する
-- Task.md を更新: タスクエントリを **Processing** → **Failed** に移動
-  - チェックボックスを除去（`- **ID**` 形式にする）
-  - `StartedAt`、`Branch`、`Step` フィールドを削除
-  - `FailedAt`（現在時刻）、`Reason`（失敗理由）を追加
-  - PR が作成済みなら `PR`（PR URL）を追加
-  - frontmatter の `updatedAt` を更新
-- `stopOnError` が `true` → ループ終了（終了サマリーへ）
-- `stopOnError` が `false` → 次のタスクへ
-
-## 終了サマリー
-
-ループ終了時に以下のサマリーを出力する:
-
-```
-Task Loop 完了
-
-処理結果:
-  完了: {tasksCompleted} タスク
-  失敗: {tasksFailed} タスク
-  スキップ: {tasksSkipped} タスク
-  残り: {remaining} タスク
-
-PR一覧:
-  - #{prNumber} {title} ({prUrl}) [完了]
-  - #{prNumber} {title} ({prUrl}) [失敗]
-
-{手動対応が必要なタスクがあれば}
-手動対応が必要:
-  - {ファイル名}: {理由}
-
-終了理由: {全タスク完了 / maxTasks到達 / 時間制限超過 / エラー停止}
-```
+7. 未処理タスクがなければループ終了（`steps/summary.md` の終了サマリーへ）
