@@ -78,7 +78,7 @@ task-loop-state.json
 **方法C: GitHub Issue からの変換**
 `gh issue list` や `gh issue view` を使ってissueを読み込み、タスクファイルに変換する。
 
-いずれの方法でも、タスクファイルフォーマット（`references/task-file-format.md`）に従って `tasks/todo/` に生成する。
+いずれの方法でも、タスクファイルフォーマット（`task-loop-doc` スキルの `references/task-file-format.md`）に従って `tasks/todo/` に生成する。
 
 ### Step 6: タスクダッシュボードの生成
 
