@@ -59,9 +59,14 @@ tasks/
 `.gitignore` に以下を追加する（既に存在する場合はスキップ）:
 
 ```
+# task-loop
+tasks/
+Task.md
 task-loop-state.json
 .pr_number
 ```
+
+タスクファイル（`tasks/` と `Task.md`）は実行時の状態管理ファイルであり、実装の成果物ではないためgit管理から除外する。これにより、PRにタスク管理の差分が混入することを防ぎ、複数ブランチでのコンフリクトも回避できる。
 
 `.gitignore` が存在しない場合は新規作成する。
 
