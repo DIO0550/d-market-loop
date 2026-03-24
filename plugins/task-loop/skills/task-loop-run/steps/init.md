@@ -12,9 +12,9 @@
    git checkout -b {branchPrefix}{ファイル名から拡張子を除いたもの}
    ```
    例: `task/001-add-auth`
-5. タスクファイルのfrontmatterを `status: in_progress` に更新、`assignedAt` に現在時刻を設定
-6. `task-loop-state.json` にタスクエントリを追加（status: "in_progress"、startedAt）
-7. Task.md を更新: タスクエントリを **Todo** → **Processing** に移動
-   - `Priority` フィールドを削除
-   - `StartedAt`（現在時刻）、`Branch`（ブランチ名）、`Step: implementing` を追加
-   - frontmatter の `updatedAt` を更新
+5. タスクファイルを `{tasksDir}/todo/` から `{tasksDir}/processing/` に移動する:
+   ```bash
+   mv {tasksDir}/todo/{タスクファイル} {tasksDir}/processing/{タスクファイル}
+   ```
+6. タスクファイルのfrontmatterに `assignedAt` を現在時刻で設定
+7. `task-loop-state.json` にタスクエントリを追加（status: "in_progress"、startedAt）

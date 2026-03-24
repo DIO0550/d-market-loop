@@ -1,6 +1,5 @@
 # マージ
 
-0. Task.md の Processing エントリの Step を `merging` に更新
 1. PRをマージする:
    ```bash
    gh pr merge {PR番号} --{mergeStrategy} --delete-branch

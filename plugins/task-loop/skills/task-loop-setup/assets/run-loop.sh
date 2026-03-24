@@ -190,7 +190,6 @@ while true; do
 
 Steps 1〜4（タスク初期化、実装、コミット、PR作成）までを実行してください。
 PR作成後、レビュー待ちには入らず終了してください。
-Task.md の Processing エントリの Step は \`reviewing\` に更新してから終了してください。
 **重要**: PR作成後、PR番号を \`${PR_NUMBER_FILE}\` に書き出してください。"
 
     run_claude_session "implement" "$IMPLEMENT_PROMPT" "$(get_current_task_name)"
@@ -237,7 +236,7 @@ PR #${PR_NUMBER} のレビューが完了しました。
    - **指摘あり**（コード修正が必要な指摘、バグの指摘等）:
      → Step 6（レビュー指摘修正）を実行
      → 修正をコミット・プッシュしたら、レビュー待ちには入らず終了
-     → Task.md の Processing エントリの Step は \`reviewing\` に更新してから終了
+     → 修正をコミット・プッシュしたら、レビュー待ちには入らず終了
 
 修正回数: ${FIX_COUNT}/${MAX_FIX_ITERATIONS}"
 

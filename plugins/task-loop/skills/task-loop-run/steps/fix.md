@@ -1,6 +1,5 @@
 # レビュー指摘修正
 
-0. Task.md の Processing エントリの Step を `fixing` に更新
 1. PRのレビューコメントを取得する:
    ```bash
    gh api repos/{owner}/{repo}/pulls/{PR番号}/comments
@@ -18,5 +17,4 @@
    ```
 5. 修正回数のカウントと上限チェックは外部ループ（`run-loop.sh`）が管理する
 6. 修正コミット・プッシュ後、**レビュー待ちには入らず AIセッションを終了する**
-   - Task.md の Processing エントリの Step を `reviewing` に更新してから終了
    - 外部ループが再度レビューポーリングを行い、必要に応じて再度 fix モードで呼び出す

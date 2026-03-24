@@ -1,6 +1,8 @@
 # Task.md フォーマット
 
-カンバン形式のタスクダッシュボード兼計画書。`task-loop-doc` スキルが生成し、`task-loop-run` スキルがタスク処理時にセクション間でエントリを移動して進捗を反映する。
+プロジェクトの技術的コンテキストを記述するファイル。`task-loop-doc` スキルが生成し、`task-loop-run` スキルがタスク実装時に参照する。
+
+タスクの状態管理はフォルダ構造で行う（`todo/`、`processing/`、`done/`、`failed/`）。Task.md はコンテキスト情報のみを持つ。
 
 ## ファイル配置
 
@@ -28,7 +30,7 @@ totalTasks: 5
 
 ## 本文構造
 
-Task.md は **Context セクション** と **4つのカンバンセクション** で構成する。
+Task.md は **Context セクション** のみで構成する。
 
 ---
 
@@ -74,106 +76,30 @@ src/
 
 ---
 
-### カンバンセクション
+## タスクの状態管理
 
-タスクを状態別に4つのセクションで管理する。
+タスクの状態はフォルダ構造で管理する。タスクファイルを該当フォルダに移動することで状態遷移を表現する。
 
-#### セクション間の遷移
+### フォルダ構成
 
 ```
-Todo ──(タスク選択)──> Processing ──(マージ成功)──> Done
-                            │
-                            └──(エラー/失敗)──> Failed
+{tasksDir}/
+├── todo/           # 未処理のタスク
+│   ├── 001-setup-prisma.md
+│   └── 002-add-user-model.md
+├── processing/     # 処理中のタスク
+│   └── 003-auth-api.md
+├── done/           # 完了したタスク
+│   └── 001-add-auth-schema.md
+└── failed/         # 失敗したタスク
 ```
 
-#### タスクエントリの共通フィールド
+### 状態遷移
 
-全セクション共通:
-
-| フィールド | 説明 |
-|-----------|------|
-| **ID**（太字） | タスクファイル名（`.md` 除く）。例: `001-setup-prisma` |
-| **タイトル** | タスクの概要（ID の後にハイフン区切りで記述） |
-| Blockers | `none` または依存先タスクIDのカンマ区切り |
-| File | 個別タスクファイルへのパス |
-
-#### セクション別の追加フィールド
-
-| フィールド | Todo | Processing | Done | Failed |
-|-----------|------|------------|------|--------|
-| Priority | o | - | - | - |
-| StartedAt | - | o | - | - |
-| Branch | - | o | - | - |
-| Step | - | o | - | - |
-| CompletedAt | - | - | o | - |
-| PR | - | - | o | o（あれば） |
-| FailedAt | - | - | - | o |
-| Reason | - | - | - | o |
-
-**Step の値**: `implementing` → `reviewing` → `fixing` → `merging`
-
----
-
-### Todo セクション
-
-未処理のタスク。`task-loop-doc` が生成時に全タスクをここに配置する。
-
-```markdown
-## Todo
-
-- [ ] **001-setup-prisma** - Prismaスキーマ初期設定
-  - Blockers: none
-  - File: `tasks/001-setup-prisma.md`
-  - Priority: high
-
-- [ ] **002-add-user-model** - ユーザーモデル追加
-  - Blockers: `001-setup-prisma`
-  - File: `tasks/002-add-user-model.md`
-  - Priority: normal
 ```
-
-### Processing セクション
-
-処理中のタスク。`task-loop-run` が Todo から移動する。
-
-```markdown
-## Processing
-
-- [ ] **003-auth-api** - 認証APIエンドポイント
-  - Blockers: `002-add-user-model`
-  - File: `tasks/003-auth-api.md`
-  - StartedAt: 2026-03-22T10:15:00Z
-  - Branch: `task/003-auth-api`
-  - Step: reviewing
-```
-
-### Done セクション
-
-完了したタスク。`task-loop-run` が Processing から移動する。完了順に追記。
-
-```markdown
-## Done
-
-- [x] **001-setup-prisma** - Prismaスキーマ初期設定
-  - Blockers: none
-  - File: `tasks/001-setup-prisma.md`
-  - CompletedAt: 2026-03-22T10:15:00Z
-  - PR: https://github.com/owner/repo/pull/42
-```
-
-### Failed セクション
-
-失敗したタスク。`task-loop-run` が Processing から移動する。
-
-```markdown
-## Failed
-
-- **004-auth-frontend** - ログインページ実装
-  - Blockers: `003-auth-api`
-  - File: `tasks/004-auth-frontend.md`
-  - FailedAt: 2026-03-22T10:45:00Z
-  - Reason: テストが3回修正後も失敗
-  - PR: https://github.com/owner/repo/pull/44
+todo/ ──(タスク選択)──> processing/ ──(マージ成功)──> done/
+                             │
+                             └──(エラー/失敗)──> failed/
 ```
 
 ---
@@ -223,70 +149,20 @@ src/
 - SQLインジェクション対策
 - APIルートは `src/app/api/` 配下に配置
 - エラーレスポンスは `{ error: string }` 形式
-
-## Todo
-
-- [ ] **004-auth-frontend** - ログインページ実装
-  - Blockers: `003-auth-api`
-  - File: `tasks/004-auth-frontend.md`
-  - Priority: normal
-
-- [ ] **005-add-e2e-tests** - E2Eテスト追加
-  - Blockers: `004-auth-frontend`
-  - File: `tasks/005-add-e2e-tests.md`
-  - Priority: low
-
-## Processing
-
-- [ ] **003-auth-api** - 認証APIエンドポイント
-  - Blockers: `002-add-user-model`
-  - File: `tasks/003-auth-api.md`
-  - StartedAt: 2026-03-22T10:30:00Z
-  - Branch: `task/003-auth-api`
-  - Step: implementing
-
-## Done
-
-- [x] **001-add-auth-schema** - 認証スキーマ追加
-  - Blockers: none
-  - File: `tasks/001-add-auth-schema.md`
-  - CompletedAt: 2026-03-22T10:15:00Z
-  - PR: https://github.com/owner/repo/pull/42
-
-- [x] **002-add-user-model** - ユーザーモデル追加
-  - Blockers: `001-add-auth-schema`
-  - File: `tasks/002-add-user-model.md`
-  - CompletedAt: 2026-03-22T10:30:00Z
-  - PR: https://github.com/owner/repo/pull/43
-
-## Failed
-
-（なし）
 ```
 
 ## task-loop-run からの参照方法
 
 ### 読み込み
 
-タスク処理開始時に Task.md を読み込み、以下の情報を活用する:
+タスク処理開始時に Task.md を読み込み、**Context** セクションの情報を活用する:
 
-1. **Context** — Tech Stack・Architecture・Constraints・Shared Context・Notes を実装時に遵守する
-2. **カンバンセクション** — 現在のタスク状態を把握する
-
-### 更新タイミング
-
-| タイミング | 操作 |
-|-----------|------|
-| タスク開始（Step 1） | Todo → Processing に移動。StartedAt, Branch, Step を追加 |
-| 実装中（Step 2） | Step を `implementing` に設定（移動時に設定済み） |
-| レビュー待ち（Step 5） | Step を `reviewing` に更新 |
-| レビュー修正（Step 6） | Step を `fixing` に更新 |
-| マージ中（Step 7） | Step を `merging` に更新 |
-| タスク完了（Step 8） | Processing → Done に移動。CompletedAt, PR を追加。チェックボックスを `[x]` に |
-| タスク失敗 | Processing → Failed に移動。FailedAt, Reason を追加。チェックボックスを除去 |
-
-各更新時に frontmatter の `updatedAt` も更新する。
+- **Tech Stack** — 技術スタックを実装時に遵守する
+- **Architecture** — アーキテクチャに沿った実装をする
+- **Constraints** — 制約条件を守る
+- **Shared Context** — タスク間の連携情報を参照し、一貫した実装を行う
+- **Notes** — リスク、規約、注意点を意識する
 
 ### Task.md が存在しない場合
 
-Task.md が存在しない場合は、全ての更新をスキップする（後方互換性を維持）。タスクファイルの内容のみに基づいて実装する。
+Task.md が存在しない場合は、読み込みをスキップする（後方互換性を維持）。タスクファイルの内容のみに基づいて実装する。

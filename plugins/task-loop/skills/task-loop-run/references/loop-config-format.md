@@ -33,7 +33,7 @@
 |-----------|------|-----------|------|
 | `tasksDir` | string | `"tasks"` | タスクファイルのディレクトリ（リポジトリルートからの相対パス） |
 | `stateFile` | string | `"task-loop-state.json"` | 状態ファイルのパス |
-| `planFile` | string | `"Task.md"` | カンバン形式のタスクダッシュボードのファイルパス（リポジトリルートからの相対パス） |
+| `planFile` | string | `"Task.md"` | プロジェクトコンテキストファイルのパス（リポジトリルートからの相対パス） |
 | `baseBranch` | string | `"main"` | ベースブランチ名 |
 | `branchPrefix` | string | `"task/"` | タスクブランチ名のプレフィックス |
 | `maxTasks` | number | `0` | 処理するタスクの最大数。0 = 無制限 |
@@ -53,7 +53,7 @@
 
 ループは以下のいずれかの条件で終了する:
 
-1. **全タスク完了**: pendingのタスクがなくなった
+1. **全タスク完了**: `todo/` にタスクがなくなった
 2. **maxTasks到達**: 指定した数のタスクを処理した
 3. **timeLimitMinutes超過**: 制限時間を超えた
 4. **エラー発生 + stopOnError**: タスクが失敗し、stopOnErrorがtrue
