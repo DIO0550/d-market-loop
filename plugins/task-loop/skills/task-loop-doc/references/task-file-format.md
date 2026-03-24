@@ -2,7 +2,9 @@
 
 ## 命名規則
 
-タスクファイルは `tasks/` ディレクトリに配置する Markdown ファイル。
+タスクファイルは `tasks/` ディレクトリ配下のステータスフォルダに配置する Markdown ファイル。
+
+生成時は `tasks/todo/` に配置する。処理の進行に応じて `processing/`、`done/`、`failed/` に移動される。
 
 - ファイル名: `NNN-descriptive-name.md`（NNNは3桁の連番）
 - 連番が実行順序を決定する
@@ -13,7 +15,6 @@
 ```yaml
 ---
 title: "認証モジュールを追加する"    # 必須: タスクタイトル（PRタイトルにも使用）
-status: pending                       # 任意: pending | in_progress | completed | failed | skipped
 priority: normal                      # 任意: low | normal | high
 commitPrefix: feat                    # 任意: conventional commit のプレフィックス（デフォルト: feat）
 assignedAt: ""                        # 自動設定: タスク開始時に記録
@@ -22,16 +23,16 @@ prUrl: ""                             # 自動設定: PR作成時に記録
 ---
 ```
 
-### status の扱い
+### 状態管理
 
-| 値 | 意味 |
-|----|------|
-| （未設定） | `pending` と同等。未処理タスク |
-| `pending` | 未処理 |
-| `in_progress` | 処理中（中断復帰の検出に使用） |
-| `completed` | 完了済み。スキップされる |
-| `failed` | 失敗。スキップされる |
-| `skipped` | 手動でスキップ指定。スキップされる |
+タスクの状態はフォルダの所在で管理する。frontmatter に `status` フィールドは持たない。
+
+| フォルダ | 意味 |
+|---------|------|
+| `todo/` | 未処理 |
+| `processing/` | 処理中 |
+| `done/` | 完了済み |
+| `failed/` | 失敗 |
 
 ## 本文構造
 
