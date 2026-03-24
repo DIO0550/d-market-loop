@@ -54,6 +54,12 @@ tasks/
 └── failed/      # 失敗したタスクファイル
 ```
 
+また、セッションログ出力用のディレクトリも作成する:
+
+```
+session-logs/    # セッションごとのAI動作ログ（Markdown）
+```
+
 ### Step 4: .gitignore の更新
 
 `.gitignore` に以下を追加する（既に存在する場合はスキップ）:
@@ -64,6 +70,7 @@ tasks/
 Task.md
 task-loop-state.json
 .pr_number
+session-logs/
 ```
 
 タスクファイル（`tasks/` と `Task.md`）は実行時の状態管理ファイルであり、実装の成果物ではないためgit管理から除外する。これにより、PRにタスク管理の差分が混入することを防ぎ、複数ブランチでのコンフリクトも回避できる。
