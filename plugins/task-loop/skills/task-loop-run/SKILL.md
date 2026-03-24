@@ -52,49 +52,11 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 ## 設定の読み込み
 
-リポジトリルートの `task-loop-config.json` を読み込む。ファイルが存在しない場合は全てデフォルト値を使用する。
-
-デフォルト値:
-```json
-{
-  "tasksDir": "tasks",
-  "stateFile": "task-loop-state.json",
-  "planFile": "Task.md",
-  "baseBranch": "main",
-  "branchPrefix": "task/",
-  "maxTasks": 0,
-  "stopOnError": true,
-  "timeLimitMinutes": 0,
-  "reviewer": "copilot",
-  "mergeStrategy": "squash",
-  "deleteBranchAfterMerge": true,
-  "reviewPollIntervalSeconds": 30,
-  "reviewMaxWaitMinutes": 30,
-  "maxFixIterations": 3,
-  "autoMergeWithoutReview": false,
-  "prBodyFooter": "Automated by task-loop-run"
-}
-```
-
-設定フォーマットの詳細は `references/loop-config-format.md` を参照。
+リポジトリルートの `task-loop-config.json` を読み込む。ファイルが存在しない場合は全てデフォルト値を使用する。設定フォーマットとデフォルト値の詳細は `references/loop-config-format.md` を参照。
 
 ## Task.md の読み込み
 
-設定の `planFile`（デフォルト: `Task.md`）を確認する。
-
-1. ファイルが存在する場合:
-   - Task.md を全文読み込む
-   - **Context セクション** から以下の情報を以降のタスク処理で活用する:
-     - **Tech Stack** — 技術スタックを実装時に遵守する
-     - **Architecture** — アーキテクチャに沿った実装をする
-     - **Constraints** — 制約条件を守る
-     - **Shared Context** — タスク間の連携情報を参照し、一貫した実装を行う
-     - **Notes** — リスク、規約、注意点を意識する
-   - **カンバンセクション** から現在のタスク状態を把握する
-2. ファイルが存在しない場合:
-   - 警告なしでスキップする（後方互換性を維持）
-   - Task.md の更新も全てスキップする
-   - タスクファイルの内容のみに基づいて実装する
+`references/task-md-reading.md` の手順に従って Task.md を読み込む。
 
 ## 中断復帰チェック
 
@@ -102,10 +64,4 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 ## タスク発見
 
-1. `{tasksDir}/*.md` を取得する
-2. ファイル名の昇順（辞書順）でソートする
-3. 各ファイルのfrontmatterを読み、`status` を確認する
-4. `status` が未設定または `pending` のタスクを「未処理」とする
-5. `completed`、`failed`、`skipped` のタスクはスキップする
-6. 最初の未処理タスクを選択する
-7. 未処理タスクがなければループ終了（`steps/summary.md` の終了サマリーへ）
+`references/task-discovery.md` の手順に従ってタスクを選択する。
