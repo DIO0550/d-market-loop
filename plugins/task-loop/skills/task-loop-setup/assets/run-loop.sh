@@ -164,7 +164,23 @@ poll_review() {
 }
 
 PROMPT_BASE="$(cat "$INSTRUCTIONS_FILE")"
-ALLOWED_TOOLS="Bash(git:*),Bash(gh:*),Read,Write,Edit,Glob,Grep"
+
+# --- allowedTools の構築 ---
+build_allowed_tools() {
+  local base="Bash(git:*),Bash(gh:*)"
+  if [ -f "$CONFIG_FILE" ]; then
+    local cmds
+    cmds=$(jq -r '.allowedCommands // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+    while IFS= read -r cmd; do
+      [ -z "$cmd" ] && continue
+      base="${base},Bash(${cmd})"
+    done <<< "$cmds"
+  fi
+  echo "${base},Read,Write,Edit,Glob,Grep,TodoRead,TodoWrite"
+}
+
+ALLOWED_TOOLS="$(build_allowed_tools)"
+echo "allowedTools: ${ALLOWED_TOOLS}"
 
 while true; do
   if ! has_remaining_tasks; then
