@@ -97,7 +97,54 @@ chmod +x run-loop.sh
 
 `run-loop.sh` は外部ループとして Claude CLI を繰り返し起動し、タスクを自動処理する。起動時に同じディレクトリの `task-loop-instructions.md` を読み込んでプロンプトとして渡す。残タスク（pending / in_progress）がなくなると自動で終了する。
 
-### Step 6: セットアップ完了サマリー
+### Step 6: PreToolUse hook スクリプトの生成
+
+`allowedCommands` が指定されている場合、`assets/pre-tool-use-hook.sh.template` をもとに hook スクリプトを生成する。
+
+テンプレート内の `{{ALLOWED_COMMANDS}}` を、ヒアリングした許可コマンドのリストで置き換える。
+
+生成例（`allowedCommands` が `["git status", "git add", "git commit", "pnpm test"]` の場合）:
+
+```bash
+ALLOWED_COMMANDS=(
+  "git status"
+  "git add"
+  "git commit"
+  "pnpm test"
+)
+```
+
+生成したスクリプトはリポジトリルートの `.claude/hooks/pre-tool-use-hook.sh` に配置する。
+
+```bash
+mkdir -p .claude/hooks
+# テンプレートから生成したスクリプトを書き出す
+chmod +x .claude/hooks/pre-tool-use-hook.sh
+```
+
+また、`.claude/settings.json` に PreToolUse hook を登録する（ファイルが無ければ新規作成、既存なら hooks セクションを追加）:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-tool-use-hook.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`allowedCommands` が空または未指定の場合、このステップはスキップする。
+
+### Step 7: セットアップ完了サマリー
 
 生成したファイルの一覧と次のステップを出力する。
 
@@ -111,6 +158,8 @@ chmod +x run-loop.sh
   - task-loop-instructions.md
   - tasks/ (todo/, processing/, done/, failed/)
   - .gitignore (更新)
+  - .claude/hooks/pre-tool-use-hook.sh (allowedCommands指定時)
+  - .claude/settings.json (allowedCommands指定時)
 
 次のステップ:
   1. task-loop-doc スキルでタスクファイルとダッシュボードを生成してください
