@@ -29,14 +29,14 @@ deny() {
   exit 0
 }
 
-# --- 禁止リスト ---
+# --- 禁止コマンドが含まれていたら拒否 ---
 DENIED_COMMANDS=(
   {{DENIED_COMMANDS}}
 )
 
 for denied_cmd in "${DENIED_COMMANDS[@]}"; do
-  if [[ "$COMMAND" == "$denied_cmd" || "$COMMAND" == "$denied_cmd "* ]]; then
-    deny "禁止コマンド: ${denied_cmd}"
+  if [[ "$COMMAND" == *"$denied_cmd"* ]]; then
+    deny "禁止コマンドを含んでいます: ${denied_cmd}"
   fi
 done
 
