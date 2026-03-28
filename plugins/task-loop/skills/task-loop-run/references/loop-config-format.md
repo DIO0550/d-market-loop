@@ -24,7 +24,7 @@
   "autoMergeWithoutReview": false,
   "prBodyFooter": "Automated by task-loop-run",
   "sessionLogsDir": "session-logs",
-  "allowedCommands": ["pnpm:*"]
+  "allowedCommands": ["pnpm test", "pnpm run lint"]
 }
 ```
 
@@ -49,31 +49,30 @@
 | `autoMergeWithoutReview` | boolean | `false` | レビュータイムアウト時に自動マージするか |
 | `prBodyFooter` | string | `"Automated by task-loop-run"` | PR本文のフッター |
 | `sessionLogsDir` | string | `"session-logs"` | セッションログの出力ディレクトリ（リポジトリルートからの相対パス） |
-| `allowedCommands` | string[] | `[]` | Claudeセッションで追加で許可するBashコマンド。`--allowedTools` の `Bash()` に追加される。詳細は下記参照 |
+| `allowedCommands` | string[] | `[]` | Claudeセッションで許可するBashコマンド。完全一致で指定する。詳細は下記参照 |
 
 ## allowedCommands
 
-Claudeセッションで実行を許可するコマンドを指定する。`git` と `gh` は常に許可されるため指定不要。
+Claudeセッションで実行を許可するBashコマンドを指定する。各コマンドは完全一致で評価される。
 
-各要素は `--allowedTools` の `Bash()` 記法に対応する:
+`git` と `gh` は PreToolUse hook により常に許可済みのため指定不要。
 
-| 記法 | 意味 | 例 |
-|------|------|-----|
-| `"pnpm:*"` | pnpmの全サブコマンドを許可 | `pnpm test`, `pnpm install`, `pnpm run build` |
-| `"pnpm test"` | 特定のコマンドのみ許可 | `pnpm test` だけ |
-| `"npm:*"` | npmの全サブコマンドを許可 | `npm test`, `npm run lint` |
-| `"make:*"` | makeの全ターゲットを許可 | `make build`, `make test` |
+許可は2層で適用される:
+1. **PreToolUse hook** — 対話セッションでコマンドを自動許可
+2. **run-loop.sh (`--allowedTools`)** — `claude -p` 非対話セッションでコマンドを許可
+
+また、許可コマンド一覧は `run-loop.sh` 実行時にプロンプトへ自動注入され、Claudeがどのコマンドを使えるかを認識できる。
 
 設定例:
 ```json
 {
-  "allowedCommands": ["pnpm:*"]
+  "allowedCommands": ["pnpm test", "pnpm run lint", "pnpm run build"]
 }
 ```
 
 ```json
 {
-  "allowedCommands": ["npm test", "npm run lint", "npm run build"]
+  "allowedCommands": ["npm test", "npm run lint", "make build", "make test"]
 }
 ```
 

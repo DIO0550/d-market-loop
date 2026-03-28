@@ -182,6 +182,35 @@ build_allowed_tools() {
 ALLOWED_TOOLS="$(build_allowed_tools)"
 echo "allowedTools: ${ALLOWED_TOOLS}"
 
+# --- 許可コマンド一覧をプロンプトに注入 ---
+build_allowed_commands_prompt() {
+  if [ ! -f "$CONFIG_FILE" ]; then
+    return
+  fi
+  local cmds
+  cmds=$(jq -r '.allowedCommands // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+  if [ -z "$cmds" ]; then
+    return
+  fi
+  echo ""
+  echo "## 使用可能なコマンド"
+  echo ""
+  echo "以下のコマンドが実行許可されています:"
+  echo ""
+  while IFS= read -r cmd; do
+    [ -z "$cmd" ] && continue
+    echo "- \`${cmd}\`"
+  done <<< "$cmds"
+  echo ""
+  echo "上記以外のコマンドは \`git\` と \`gh\` のみ使用できます。"
+}
+
+ALLOWED_COMMANDS_PROMPT="$(build_allowed_commands_prompt)"
+if [ -n "$ALLOWED_COMMANDS_PROMPT" ]; then
+  PROMPT_BASE="${PROMPT_BASE}
+${ALLOWED_COMMANDS_PROMPT}"
+fi
+
 while true; do
   if ! has_remaining_tasks; then
     echo "全タスクが処理済みです"
