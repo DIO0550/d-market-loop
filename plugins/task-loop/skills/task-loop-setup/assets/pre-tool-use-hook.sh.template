@@ -17,7 +17,35 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-# 許可コマンドリスト（setup時に生成される）
+deny() {
+  local reason="$1"
+  jq -n --arg reason "$reason" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $reason
+    }
+  }'
+  exit 0
+}
+
+# --- 禁止リスト ---
+DENIED_COMMANDS=(
+  {{DENIED_COMMANDS}}
+)
+
+for denied_cmd in "${DENIED_COMMANDS[@]}"; do
+  if [[ "$COMMAND" == "$denied_cmd" || "$COMMAND" == "$denied_cmd "* ]]; then
+    deny "禁止コマンド: ${denied_cmd}"
+  fi
+done
+
+# --- コマンドチェーン・インジェクション検出 ---
+if [[ "$COMMAND" =~ \&\&|\|\||[;\|]|\$\(|['\`'] ]]; then
+  deny "コマンドチェーンは許可されていません"
+fi
+
+# --- 許可リスト（setup時に生成される）---
 ALLOWED_COMMANDS=(
   {{ALLOWED_COMMANDS}}
 )

@@ -102,6 +102,18 @@ chmod +x run-loop.sh
 `allowedCommands` が指定されている場合、`assets/pre-tool-use-hook.sh.template` をもとに hook スクリプトを生成する。
 
 テンプレート内の `{{ALLOWED_COMMANDS}}` を、ヒアリングした許可コマンドのリストで置き換える。
+`{{DENIED_COMMANDS}}` には以下のデフォルト禁止コマンドを埋め込む:
+
+```bash
+DENIED_COMMANDS=(
+  "npx"
+  "pnpm dlx"
+  "pnpm install"
+  "npm install"
+  "yarn add"
+  "pip install"
+)
+```
 
 生成例（`allowedCommands` が `["git status", "git add", "git commit", "pnpm test"]` の場合）:
 
