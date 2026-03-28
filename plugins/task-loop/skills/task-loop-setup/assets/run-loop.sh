@@ -167,16 +167,21 @@ PROMPT_BASE="$(cat "$INSTRUCTIONS_FILE")"
 
 # --- allowedTools の構築 ---
 build_allowed_tools() {
-  local base="Bash(git:*),Bash(gh:*)"
+  local tools=""
   if [ -f "$CONFIG_FILE" ]; then
     local cmds
     cmds=$(jq -r '.allowedCommands // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
     while IFS= read -r cmd; do
       [ -z "$cmd" ] && continue
-      base="${base},Bash(${cmd})"
+      [ -n "$tools" ] && tools="${tools},"
+      tools="${tools}Bash(${cmd})"
     done <<< "$cmds"
   fi
-  echo "${base},Read,Write,Edit,Glob,Grep,TodoRead,TodoWrite"
+  if [ -n "$tools" ]; then
+    echo "${tools},Read,Write,Edit,Glob,Grep,TodoRead,TodoWrite"
+  else
+    echo "Read,Write,Edit,Glob,Grep,TodoRead,TodoWrite"
+  fi
 }
 
 ALLOWED_TOOLS="$(build_allowed_tools)"
@@ -202,7 +207,7 @@ build_allowed_commands_prompt() {
     echo "- \`${cmd}\`"
   done <<< "$cmds"
   echo ""
-  echo "上記以外のコマンドは \`git\` と \`gh\` のみ使用できます。"
+  echo "上記以外のBashコマンドは使用できません。"
 }
 
 ALLOWED_COMMANDS_PROMPT="$(build_allowed_commands_prompt)"

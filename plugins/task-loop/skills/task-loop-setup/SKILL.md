@@ -22,9 +22,8 @@ task-loop-run スキルを使うための初期セットアップを行う。ユ
 - **stopOnError**: エラー時に停止するか（デフォルト: `true`）
 - **maxTasks**: 1回の実行で処理する最大タスク数（デフォルト: `0` = 無制限）
 - **allowedCommands**: Claudeセッションで許可するBashコマンド（デフォルト: なし）
-  - プロジェクトのテスト・ビルドコマンドを個別に指定する
-  - 例: `["pnpm test", "pnpm run lint", "pnpm run build"]`
-  - `git` と `gh` は hook で常に許可済みなので指定不要
+  - git/gh含め、必要なコマンドを全て個別に指定する
+  - 例: `["git status", "git add", "git commit", "gh pr create", "pnpm test"]`
 
 デフォルトのままでよい項目が多い場合は「デフォルト設定でよいですか？」と一括で確認してもよい。
 

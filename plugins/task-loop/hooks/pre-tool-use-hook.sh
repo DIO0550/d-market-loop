@@ -1,7 +1,6 @@
 #!/bin/bash
 # PreToolUse hook for task-loop
-# git/gh コマンドを常に許可し、
-# task-loop-config.json の allowedCommands に基づいて追加コマンドを自動許可する
+# task-loop-config.json の allowedCommands に基づいて Bash コマンドを自動許可する
 
 CONFIG_FILE="task-loop-config.json"
 
@@ -14,42 +13,31 @@ if [ "$TOOL_NAME" != "Bash" ]; then
   exit 0
 fi
 
+# 設定ファイルが無ければ関与しない
+if [ ! -f "$CONFIG_FILE" ]; then
+  exit 0
+fi
+
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-allow() {
-  jq -n '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "allow",
-      permissionDecisionReason: "task-loop hook: 許可済みコマンド"
-    }
-  }'
-  exit 0
-}
-
-# コマンドの先頭トークンを取得
-CMD_BIN=$(echo "$COMMAND" | awk '{print $1}')
-
-# git / gh は常に許可
-case "$CMD_BIN" in
-  git|gh) allow ;;
-esac
-
-# 設定ファイルが無ければここで終了（通常の権限システムに委ねる）
-if [ ! -f "$CONFIG_FILE" ]; then
-  exit 0
-fi
-
-# allowedCommands を読み取り、完全一致で許可判定
+# allowedCommands を読み取り、前方一致で許可判定
 ALLOWED=$(jq -r '.allowedCommands // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
 
 while IFS= read -r allowed_cmd; do
   [ -z "$allowed_cmd" ] && continue
-  if [ "$COMMAND" = "$allowed_cmd" ]; then
-    allow
+  # 前方一致: "git commit" は "git commit -m 'msg'" にマッチ
+  if [[ "$COMMAND" == "$allowed_cmd" || "$COMMAND" == "$allowed_cmd "* ]]; then
+    jq -n '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        permissionDecisionReason: "task-loop-config.json の allowedCommands で許可済み"
+      }
+    }'
+    exit 0
   fi
 done <<< "$ALLOWED"
 
