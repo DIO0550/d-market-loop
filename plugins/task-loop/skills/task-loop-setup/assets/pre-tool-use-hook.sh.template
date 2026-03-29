@@ -17,9 +17,27 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
+# --- コマンドリスト ---
+ALLOWED_COMMANDS=(
+  {{ALLOWED_COMMANDS}}
+)
+
+DENIED_COMMANDS=(
+  {{DENIED_COMMANDS}}
+)
+
 deny() {
   local reason="$1"
-  jq -n --arg reason "$reason" '{
+  local allowed_list=""
+  for cmd in "${ALLOWED_COMMANDS[@]}"; do
+    allowed_list="${allowed_list}\n  - ${cmd}"
+  done
+  local denied_list=""
+  for cmd in "${DENIED_COMMANDS[@]}"; do
+    denied_list="${denied_list}\n  - ${cmd}"
+  done
+  local detail="${reason}\n\n許可コマンド:${allowed_list}\n\n禁止コマンド:${denied_list}"
+  jq -n --arg reason "$detail" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -30,10 +48,6 @@ deny() {
 }
 
 # --- 禁止コマンドが含まれていたら拒否 ---
-DENIED_COMMANDS=(
-  {{DENIED_COMMANDS}}
-)
-
 for denied_cmd in "${DENIED_COMMANDS[@]}"; do
   if [[ "$COMMAND" == *"$denied_cmd"* ]]; then
     deny "禁止コマンドを含んでいます: ${denied_cmd}"
@@ -45,12 +59,7 @@ if [[ "$COMMAND" =~ \&\&|\|\||[;\|]|\$\(|['\`'] ]]; then
   deny "コマンドチェーンは許可されていません"
 fi
 
-# --- 許可リスト（setup時に生成される）---
-ALLOWED_COMMANDS=(
-  {{ALLOWED_COMMANDS}}
-)
-
-# 前方一致で許可判定
+# --- 前方一致で許可判定 ---
 for allowed_cmd in "${ALLOWED_COMMANDS[@]}"; do
   if [[ "$COMMAND" == "$allowed_cmd" || "$COMMAND" == "$allowed_cmd "* ]]; then
     jq -n '{
