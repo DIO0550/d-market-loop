@@ -68,8 +68,7 @@ DEFAULT_DENIED_COMMANDS=(
   "yarn add"
   "yarn install"
   "pip install"
-  "rm "
-  "rm -"
+  "rm"
   "rmdir"
 )
 
@@ -108,10 +107,10 @@ deny() {
   exit 0
 }
 
-# --- 禁止コマンドが含まれていたら拒否 ---
+# --- 禁止コマンドの前方一致チェック ---
 for denied_cmd in "${DENIED_COMMANDS[@]}"; do
-  if [[ "$COMMAND" == *"$denied_cmd"* ]]; then
-    deny "禁止コマンドを含んでいます: ${denied_cmd}"
+  if [[ "$COMMAND" == "$denied_cmd" || "$COMMAND" == "$denied_cmd "* ]]; then
+    deny "禁止コマンドです: ${denied_cmd}"
   fi
 done
 
