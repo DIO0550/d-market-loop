@@ -68,6 +68,9 @@ DEFAULT_DENIED_COMMANDS=(
   "yarn add"
   "yarn install"
   "pip install"
+  "rm "
+  "rm -"
+  "rmdir"
 )
 
 # --- プロジェクト固有の許可コマンド（setup時に生成される）---
