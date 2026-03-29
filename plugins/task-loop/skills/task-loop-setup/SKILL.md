@@ -22,9 +22,9 @@ task-loop-run スキルを使うための初期セットアップを行う。ユ
 - **stopOnError**: エラー時に停止するか（デフォルト: `true`）
 - **maxTasks**: 1回の実行で処理する最大タスク数（デフォルト: `0` = 無制限）
 - **allowedCommands**: プロジェクト固有の追加許可コマンド（デフォルト: なし）
-  - git/gh/tsc/eslint等はテンプレートでデフォルト許可済み
-  - プロジェクトのテスト・ビルドコマンドを追加する
-  - 例: `["pnpm test", "pnpm run lint", "pnpm run build"]`
+  - git/gh/tsc/eslint/pnpm基本コマンド等はテンプレートでデフォルト許可済み
+  - デフォルトに無いコマンドのみ追加する
+  - 例: `["pnpm run dev", "pnpm run e2e"]`
   - 詳細は `references/allowed-commands.md` を参照
 
 デフォルトのままでよい項目が多い場合は「デフォルト設定でよいですか？」と一括で確認してもよい。

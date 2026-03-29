@@ -1,6 +1,6 @@
 # allowedCommands
 
-`task-loop-config.json` の `allowedCommands` フィールドで、Claudeセッションで実行を許可するBashコマンドを指定する。
+`task-loop-config.json` の `allowedCommands` フィールドで、プロジェクト固有の許可コマンドを追加指定する。
 
 ## 仕組み
 
@@ -13,27 +13,44 @@
 
 ## デフォルト許可コマンド
 
-以下はテンプレートに組み込み済みで、設定不要:
+テンプレートに組み込み済みで、設定不要:
 
-**git:**
-`git status`, `git add`, `git commit`, `git push`, `git pull`, `git fetch`, `git checkout`, `git switch`, `git branch`, `git diff`, `git log`, `git stash`, `git merge`, `git rebase`
+**git:** `status`, `add`, `commit`, `push`, `pull`, `fetch`, `checkout`, `switch`, `branch`, `diff`, `log`, `stash`, `merge`, `rebase`
 
-**gh:**
-`gh pr create`, `gh pr view`, `gh pr merge`, `gh pr list`, `gh api`, `gh auth status`
+**gh:** `pr create`, `pr view`, `pr merge`, `pr list`, `api`, `auth status`
 
-**TypeScript / JavaScript（チェック系）:**
-`tsc --noEmit`, `tsc -p`, `eslint`, `prettier --check`, `vitest`, `jest`
+**TypeScript / JavaScript:** `tsc --noEmit`, `tsc -p`, `eslint`, `prettier --check`, `vitest`, `jest`
 
-## プロジェクト固有の許可コマンド
+**pnpm:** `test`, `run lint`, `run build`, `run typecheck`, `run format`
+
+## デフォルト禁止コマンド
+
+テンプレートに組み込み済みで、設定不要。コマンド文字列のどこかに含まれていれば拒否される:
+
+| コマンド | 理由 |
+|---------|------|
+| `npx` | 任意のパッケージをダウンロード・実行できる |
+| `pnpm dlx` | npx と同様 |
+| `pnpm install` | postinstall スクリプトで任意コードが実行される |
+| `pnpm add` | 依存関係の変更 |
+| `pnpm remove` | 依存関係の変更 |
+| `npm install` | postinstall スクリプトで任意コードが実行される |
+| `npm ci` | 同上 |
+| `yarn add` | 依存関係の変更 |
+| `yarn install` | postinstall スクリプトで任意コードが実行される |
+| `pip install` | 任意パッケージのインストール |
+
+禁止リストは許可リストより先に評価され、常に優先される。
+
+## プロジェクト固有の追加
 
 デフォルトに含まれないコマンドは `allowedCommands` で追加する。
 
 ```json
 {
   "allowedCommands": [
-    "pnpm test",
-    "pnpm run lint",
-    "pnpm run build"
+    "pnpm run dev",
+    "pnpm run e2e"
   ]
 }
 ```
@@ -45,18 +62,3 @@
 - `"git commit"` → `git commit -m "msg"` にマッチ
 - `"pnpm test"` → `pnpm test` にマッチ、`pnpm run build` にはマッチしない
 - `"pnpm test && rm -rf /"` → コマンドチェーンとして拒否
-
-## デフォルト禁止コマンド
-
-以下のコマンドは危険性が高いため、デフォルトで禁止リストに含まれる。コマンド文字列のどこかに含まれていれば拒否される:
-
-| コマンド | 理由 |
-|---------|------|
-| `npx` | 任意のパッケージをダウンロード・実行できる |
-| `pnpm dlx` | npx と同様 |
-| `pnpm install` | postinstall スクリプトで任意コードが実行される |
-| `npm install` | 同上 |
-| `yarn add` | 同上 |
-| `pip install` | 同上 |
-
-禁止リストは許可リストより先に評価され、常に優先される。

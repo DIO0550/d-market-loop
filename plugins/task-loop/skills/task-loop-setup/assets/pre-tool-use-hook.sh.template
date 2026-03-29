@@ -17,7 +17,7 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-# --- デフォルト許可コマンド（タスクループ動作に必要） ---
+# --- デフォルト許可コマンド ---
 DEFAULT_ALLOWED_COMMANDS=(
   # git
   "git status"
@@ -41,13 +41,33 @@ DEFAULT_ALLOWED_COMMANDS=(
   "gh pr list"
   "gh api"
   "gh auth status"
-  # TypeScript / JavaScript（読み取り・チェック系）
+  # TypeScript / JavaScript（チェック系）
   "tsc --noEmit"
   "tsc -p"
   "eslint"
   "prettier --check"
   "vitest"
   "jest"
+  # pnpm（副作用の少ないもの）
+  "pnpm test"
+  "pnpm run lint"
+  "pnpm run build"
+  "pnpm run typecheck"
+  "pnpm run format"
+)
+
+# --- デフォルト禁止コマンド ---
+DEFAULT_DENIED_COMMANDS=(
+  "npx"
+  "pnpm dlx"
+  "pnpm install"
+  "pnpm add"
+  "pnpm remove"
+  "npm install"
+  "npm ci"
+  "yarn add"
+  "yarn install"
+  "pip install"
 )
 
 # --- プロジェクト固有の許可コマンド（setup時に生成される）---
@@ -55,13 +75,14 @@ PROJECT_ALLOWED_COMMANDS=(
   {{ALLOWED_COMMANDS}}
 )
 
-# --- 禁止コマンド ---
-DENIED_COMMANDS=(
+# --- プロジェクト固有の禁止コマンド（setup時に生成される）---
+PROJECT_DENIED_COMMANDS=(
   {{DENIED_COMMANDS}}
 )
 
-# 許可リストを結合
+# リストを結合
 ALLOWED_COMMANDS=("${DEFAULT_ALLOWED_COMMANDS[@]}" "${PROJECT_ALLOWED_COMMANDS[@]}")
+DENIED_COMMANDS=("${DEFAULT_DENIED_COMMANDS[@]}" "${PROJECT_DENIED_COMMANDS[@]}")
 
 deny() {
   local reason="$1"
