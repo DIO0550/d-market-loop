@@ -107,19 +107,19 @@ deny() {
   exit 0
 }
 
-# --- 禁止コマンドの前方一致チェック ---
+# --- 1. コマンドチェーン・インジェクション検出（最優先） ---
+if [[ "$COMMAND" =~ \&\&|\|\||[;\|]|\$\(|['\`'] ]]; then
+  deny "コマンドチェーンは許可されていません"
+fi
+
+# --- 2. 禁止コマンドの前方一致チェック ---
 for denied_cmd in "${DENIED_COMMANDS[@]}"; do
   if [[ "$COMMAND" == "$denied_cmd" || "$COMMAND" == "$denied_cmd "* ]]; then
     deny "禁止コマンドです: ${denied_cmd}"
   fi
 done
 
-# --- コマンドチェーン・インジェクション検出 ---
-if [[ "$COMMAND" =~ \&\&|\|\||[;\|]|\$\(|['\`'] ]]; then
-  deny "コマンドチェーンは許可されていません"
-fi
-
-# --- 前方一致で許可判定 ---
+# --- 3. 許可コマンドの前方一致チェック ---
 for allowed_cmd in "${ALLOWED_COMMANDS[@]}"; do
   if [[ "$COMMAND" == "$allowed_cmd" || "$COMMAND" == "$allowed_cmd "* ]]; then
     jq -n '{
