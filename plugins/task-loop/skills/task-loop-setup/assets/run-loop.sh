@@ -164,7 +164,64 @@ poll_review() {
 }
 
 PROMPT_BASE="$(cat "$INSTRUCTIONS_FILE")"
-ALLOWED_TOOLS="Bash(git:*),Bash(gh:*),Read,Write,Edit,Glob,Grep"
+
+# --- デフォルト許可コマンド（pre-tool-use-hook.sh.template と同じ） ---
+DEFAULT_ALLOWED_COMMANDS=(
+  "git status" "git add" "git commit" "git push" "git pull" "git fetch"
+  "git checkout" "git switch" "git branch" "git diff" "git log"
+  "git stash" "git merge" "git rebase"
+  "gh pr create" "gh pr view" "gh pr merge" "gh pr list" "gh api" "gh auth status"
+  "tsc --noEmit" "tsc -p" "eslint" "prettier --check" "vitest" "jest"
+  "pnpm test" "pnpm run lint" "pnpm run build" "pnpm run typecheck" "pnpm run format"
+)
+
+# --- allowedTools の構築 ---
+build_allowed_tools() {
+  local tools=""
+  # デフォルト許可コマンド
+  for cmd in "${DEFAULT_ALLOWED_COMMANDS[@]}"; do
+    [ -n "$tools" ] && tools="${tools},"
+    tools="${tools}Bash(${cmd})"
+  done
+  # プロジェクト固有の許可コマンド
+  if [ -f "$CONFIG_FILE" ]; then
+    local cmds
+    cmds=$(jq -r '.allowedCommands // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+    while IFS= read -r cmd; do
+      [ -z "$cmd" ] && continue
+      tools="${tools},Bash(${cmd})"
+    done <<< "$cmds"
+  fi
+  echo "${tools},Read,Write,Edit,Glob,Grep,TodoRead,TodoWrite"
+}
+
+ALLOWED_TOOLS="$(build_allowed_tools)"
+echo "allowedTools: ${ALLOWED_TOOLS}"
+
+# --- 許可コマンド一覧をプロンプトに注入 ---
+build_allowed_commands_prompt() {
+  echo ""
+  echo "## 使用可能なコマンド"
+  echo ""
+  echo "以下のコマンドが実行許可されています:"
+  echo ""
+  for cmd in "${DEFAULT_ALLOWED_COMMANDS[@]}"; do
+    echo "- \`${cmd}\`"
+  done
+  if [ -f "$CONFIG_FILE" ]; then
+    local cmds
+    cmds=$(jq -r '.allowedCommands // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+    while IFS= read -r cmd; do
+      [ -z "$cmd" ] && continue
+      echo "- \`${cmd}\`"
+    done <<< "$cmds"
+  fi
+  echo ""
+  echo "上記以外のBashコマンドは使用できません。"
+}
+
+PROMPT_BASE="${PROMPT_BASE}
+$(build_allowed_commands_prompt)"
 
 while true; do
   if ! has_remaining_tasks; then

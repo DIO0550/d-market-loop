@@ -1,0 +1,137 @@
+#!/bin/bash
+# PreToolUse hook for task-loop
+# セットアップ時に allowedCommands から生成されるスクリプト
+# 許可リストに一致するBashコマンドを自動許可する
+
+# stdin から hook input を読み取る
+INPUT=$(cat)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+
+# Bash ツール以外は関与しない
+if [ "$TOOL_NAME" != "Bash" ]; then
+  exit 0
+fi
+
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+if [ -z "$COMMAND" ]; then
+  exit 0
+fi
+
+# --- デフォルト許可コマンド ---
+DEFAULT_ALLOWED_COMMANDS=(
+  # git
+  "git status"
+  "git add"
+  "git commit"
+  "git push"
+  "git pull"
+  "git fetch"
+  "git checkout"
+  "git switch"
+  "git branch"
+  "git diff"
+  "git log"
+  "git stash"
+  "git merge"
+  "git rebase"
+  # gh
+  "gh pr create"
+  "gh pr view"
+  "gh pr merge"
+  "gh pr list"
+  "gh api"
+  "gh auth status"
+  # TypeScript / JavaScript（チェック系）
+  "tsc --noEmit"
+  "tsc -p"
+  "eslint"
+  "prettier --check"
+  "vitest"
+  "jest"
+  # pnpm（副作用の少ないもの）
+  "pnpm test"
+  "pnpm run lint"
+  "pnpm run build"
+  "pnpm run typecheck"
+  "pnpm run format"
+)
+
+# --- デフォルト禁止コマンド ---
+DEFAULT_DENIED_COMMANDS=(
+  "npx"
+  "pnpm dlx"
+  "pnpm install"
+  "pnpm add"
+  "pnpm remove"
+  "npm install"
+  "npm ci"
+  "yarn add"
+  "yarn install"
+  "pip install"
+  "rm"
+  "rmdir"
+)
+
+# --- プロジェクト固有の許可コマンド（setup時に生成される）---
+PROJECT_ALLOWED_COMMANDS=(
+  {{ALLOWED_COMMANDS}}
+)
+
+# --- プロジェクト固有の禁止コマンド（setup時に生成される）---
+PROJECT_DENIED_COMMANDS=(
+  {{DENIED_COMMANDS}}
+)
+
+# リストを結合
+ALLOWED_COMMANDS=("${DEFAULT_ALLOWED_COMMANDS[@]}" "${PROJECT_ALLOWED_COMMANDS[@]}")
+DENIED_COMMANDS=("${DEFAULT_DENIED_COMMANDS[@]}" "${PROJECT_DENIED_COMMANDS[@]}")
+
+deny() {
+  local reason="$1"
+  local allowed_list=""
+  for cmd in "${ALLOWED_COMMANDS[@]}"; do
+    allowed_list="${allowed_list}\n  - ${cmd}"
+  done
+  local denied_list=""
+  for cmd in "${DENIED_COMMANDS[@]}"; do
+    denied_list="${denied_list}\n  - ${cmd}"
+  done
+  local detail="${reason}\n\n許可コマンド:${allowed_list}\n\n禁止コマンド:${denied_list}"
+  jq -n --arg reason "$detail" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $reason
+    }
+  }'
+  exit 0
+}
+
+# --- 1. コマンドチェーン・インジェクション検出（最優先） ---
+if [[ "$COMMAND" =~ \&\&|\|\||[;\|]|\$\(|['\`'] ]]; then
+  deny "コマンドチェーンは許可されていません"
+fi
+
+# --- 2. 禁止コマンドの前方一致チェック ---
+for denied_cmd in "${DENIED_COMMANDS[@]}"; do
+  if [[ "$COMMAND" == "$denied_cmd" || "$COMMAND" == "$denied_cmd "* ]]; then
+    deny "禁止コマンドです: ${denied_cmd}"
+  fi
+done
+
+# --- 3. 許可コマンドの前方一致チェック ---
+for allowed_cmd in "${ALLOWED_COMMANDS[@]}"; do
+  if [[ "$COMMAND" == "$allowed_cmd" || "$COMMAND" == "$allowed_cmd "* ]]; then
+    jq -n '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        permissionDecisionReason: "allowedCommands で許可済み"
+      }
+    }'
+    exit 0
+  fi
+done
+
+# マッチしなければ通常の権限システムに委ねる
+exit 0
