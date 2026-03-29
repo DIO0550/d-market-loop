@@ -17,14 +17,51 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-# --- コマンドリスト ---
-ALLOWED_COMMANDS=(
+# --- デフォルト許可コマンド（タスクループ動作に必要） ---
+DEFAULT_ALLOWED_COMMANDS=(
+  # git
+  "git status"
+  "git add"
+  "git commit"
+  "git push"
+  "git pull"
+  "git fetch"
+  "git checkout"
+  "git switch"
+  "git branch"
+  "git diff"
+  "git log"
+  "git stash"
+  "git merge"
+  "git rebase"
+  # gh
+  "gh pr create"
+  "gh pr view"
+  "gh pr merge"
+  "gh pr list"
+  "gh api"
+  "gh auth status"
+  # TypeScript / JavaScript（読み取り・チェック系）
+  "tsc --noEmit"
+  "tsc -p"
+  "eslint"
+  "prettier --check"
+  "vitest"
+  "jest"
+)
+
+# --- プロジェクト固有の許可コマンド（setup時に生成される）---
+PROJECT_ALLOWED_COMMANDS=(
   {{ALLOWED_COMMANDS}}
 )
 
+# --- 禁止コマンド ---
 DENIED_COMMANDS=(
   {{DENIED_COMMANDS}}
 )
+
+# 許可リストを結合
+ALLOWED_COMMANDS=("${DEFAULT_ALLOWED_COMMANDS[@]}" "${PROJECT_ALLOWED_COMMANDS[@]}")
 
 deny() {
   local reason="$1"

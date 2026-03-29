@@ -11,6 +11,33 @@
 
 また、許可コマンド一覧は `run-loop.sh` 実行時にプロンプトへ自動注入され、Claudeがどのコマンドを使えるかを認識できる。
 
+## デフォルト許可コマンド
+
+以下はテンプレートに組み込み済みで、設定不要:
+
+**git:**
+`git status`, `git add`, `git commit`, `git push`, `git pull`, `git fetch`, `git checkout`, `git switch`, `git branch`, `git diff`, `git log`, `git stash`, `git merge`, `git rebase`
+
+**gh:**
+`gh pr create`, `gh pr view`, `gh pr merge`, `gh pr list`, `gh api`, `gh auth status`
+
+**TypeScript / JavaScript（チェック系）:**
+`tsc --noEmit`, `tsc -p`, `eslint`, `prettier --check`, `vitest`, `jest`
+
+## プロジェクト固有の許可コマンド
+
+デフォルトに含まれないコマンドは `allowedCommands` で追加する。
+
+```json
+{
+  "allowedCommands": [
+    "pnpm test",
+    "pnpm run lint",
+    "pnpm run build"
+  ]
+}
+```
+
 ## マッチング
 
 各コマンドは前方一致で評価される。ただしコマンドチェーン（`&&`, `||`, `;`, `|`）やサブシェル（`` ` ``, `$()`）を含むコマンドは拒否される。
@@ -33,30 +60,3 @@
 | `pip install` | 同上 |
 
 禁止リストは許可リストより先に評価され、常に優先される。
-
-## 設定例
-
-git/gh を含め、必要なコマンドを全て列挙する。
-
-```json
-{
-  "allowedCommands": [
-    "git status",
-    "git add",
-    "git commit",
-    "git push",
-    "git checkout",
-    "git switch",
-    "git branch",
-    "git diff",
-    "git log",
-    "gh pr create",
-    "gh pr view",
-    "gh pr merge",
-    "gh api",
-    "pnpm test",
-    "pnpm run lint",
-    "pnpm run build"
-  ]
-}
-```
