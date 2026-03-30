@@ -171,6 +171,8 @@ DEFAULT_ALLOWED_COMMANDS=(
   "git checkout" "git switch" "git branch" "git diff" "git log"
   "git stash" "git merge" "git rebase"
   "gh pr create" "gh pr view" "gh pr merge" "gh pr list" "gh api" "gh auth status"
+  "ls" "cat" "wc" "which" "command -v"
+  "mkdir -p" "cp" "mv"
   "tsc --noEmit" "tsc -p" "eslint" "prettier --check" "vitest" "jest"
   "pnpm test" "pnpm run lint" "pnpm run build" "pnpm run typecheck" "pnpm run format"
 )

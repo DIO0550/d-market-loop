@@ -48,6 +48,16 @@ DEFAULT_ALLOWED_COMMANDS=(
   "prettier --check"
   "vitest"
   "jest"
+  # ファイルシステム（読み取り系）
+  "ls"
+  "cat"
+  "wc"
+  "which"
+  "command -v"
+  # ファイルシステム（書き込み系・副作用の少ないもの）
+  "mkdir -p"
+  "cp"
+  "mv"
   # pnpm（副作用の少ないもの）
   "pnpm test"
   "pnpm run lint"

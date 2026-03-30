@@ -19,6 +19,10 @@
 
 **gh:** `pr create`, `pr view`, `pr merge`, `pr list`, `api`, `auth status`
 
+**ファイルシステム（読み取り系）:** `ls`, `cat`, `wc`, `which`, `command -v`
+
+**ファイルシステム（書き込み系）:** `mkdir -p`, `cp`, `mv`
+
 **TypeScript / JavaScript:** `tsc --noEmit`, `tsc -p`, `eslint`, `prettier --check`, `vitest`, `jest`
 
 **pnpm:** `test`, `run lint`, `run build`, `run typecheck`, `run format`
