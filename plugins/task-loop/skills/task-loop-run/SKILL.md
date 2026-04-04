@@ -13,7 +13,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 | モード | 読み込むステップファイル | 説明 |
 |--------|------------------------|------|
-| `implement` | `init` → `implement` → `commit` → `pr` → `review-wait` | タスク初期化〜PR作成。PR作成後に終了 |
+| `implement` | `init` → `implement` → `self-review` → `commit` → `pr` → `review-wait` | タスク初期化〜PR作成。PR作成後に終了 |
 | `review-check` | `fix` or `merge` → `update-state` | レビュー分析。指摘あり→修正、なし→マージ |
 | `error` | `error-recovery` | エラー状態の記録と後処理 |
 
@@ -25,6 +25,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 |---------|------|
 | `steps/init.md` | タスク初期化（ブランチ作成、状態更新） |
 | `steps/implement.md` | 実装（コード変更、テスト実行） |
+| `steps/self-review.md` | セルフレビュー（サブエージェントによる事前レビュー） |
 | `steps/commit.md` | コミット（ステージング、メッセージ作成） |
 | `steps/pr.md` | PR作成（プッシュ、PR本文生成、レビュアー設定） |
 | `steps/review-wait.md` | レビュー待ち（外部ループが担当） |
