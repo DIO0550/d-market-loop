@@ -62,7 +62,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 ## 中断復帰チェック
 
-ループ開始前に `task-loop-state.json` を確認する。`status: "in_progress"` のタスクがあれば、中断からの復帰手順（`references/state-management.md`）に従って適切なステップから再開する。
+ループ開始前に `{tasksDir}/processing/` にタスクファイルがあるか確認する。あれば中断からの復帰手順（`references/state-management.md`）に従って適切なステップから再開する。
 
 ## タスク発見
 

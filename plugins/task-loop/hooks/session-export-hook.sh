@@ -1,9 +1,8 @@
 #!/bin/bash
 # Stop hook: セッション終了時にセッションログのサマリーを生成する
-# task-loop-state.json の情報を元に、最新のセッション情報を記録する
+# processing/ のタスクファイルのfrontmatterを元に、最新のセッション情報を記録する
 
 CONFIG_FILE="task-loop-config.json"
-STATE_FILE="task-loop-state.json"
 
 # --- 設定読み込み ---
 read_config() {
@@ -18,33 +17,48 @@ read_config() {
   fi
 }
 
+TASKS_DIR=$(read_config "tasksDir" "tasks")
 LOGS_DIR=$(read_config "sessionLogsDir" "session-logs")
 
 # session-logs ディレクトリがなければ作成
 mkdir -p "$LOGS_DIR"
 
-# state.json が存在しない場合はスキップ
-if [ ! -f "$STATE_FILE" ]; then
+# processing/ のタスクファイルを探す（直近処理中 or 直前に完了したもの）
+CURRENT_TASK_FILE=$(ls "$TASKS_DIR"/processing/*.md 2>/dev/null | head -1)
+
+# processing が空なら done/ の最新ファイルを使う
+if [ -z "$CURRENT_TASK_FILE" ]; then
+  CURRENT_TASK_FILE=$(ls -t "$TASKS_DIR"/done/*.md 2>/dev/null | head -1)
+fi
+
+if [ -z "$CURRENT_TASK_FILE" ]; then
   exit 0
 fi
 
-# 現在処理中 or 直近完了のタスクを特定
-CURRENT_TASK=$(jq -r '
-  .tasks | to_entries |
-  sort_by(.value.startedAt) | reverse |
-  .[0] | .key // empty
-' "$STATE_FILE" 2>/dev/null)
+CURRENT_TASK=$(basename "$CURRENT_TASK_FILE")
 
-if [ -z "$CURRENT_TASK" ]; then
-  exit 0
-fi
+# frontmatter から情報を取得（簡易パース）
+extract_frontmatter() {
+  local file="$1"
+  local key="$2"
+  sed -n '/^---$/,/^---$/p' "$file" | grep "^${key}:" | sed "s/^${key}:[[:space:]]*//" | tr -d '"'
+}
 
-TASK_STATUS=$(jq -r ".tasks[\"$CURRENT_TASK\"].status // empty" "$STATE_FILE" 2>/dev/null)
-TASK_BRANCH=$(jq -r ".tasks[\"$CURRENT_TASK\"].branch // empty" "$STATE_FILE" 2>/dev/null)
-TASK_PR=$(jq -r ".tasks[\"$CURRENT_TASK\"].prUrl // empty" "$STATE_FILE" 2>/dev/null)
-TASK_PR_NUM=$(jq -r ".tasks[\"$CURRENT_TASK\"].prNumber // empty" "$STATE_FILE" 2>/dev/null)
-TASKS_COMPLETED=$(jq -r '.tasksCompleted // 0' "$STATE_FILE" 2>/dev/null)
-TASKS_FAILED=$(jq -r '.tasksFailed // 0' "$STATE_FILE" 2>/dev/null)
+TASK_BRANCH=$(extract_frontmatter "$CURRENT_TASK_FILE" "branch")
+TASK_PR=$(extract_frontmatter "$CURRENT_TASK_FILE" "prUrl")
+TASK_PR_NUM=$(extract_frontmatter "$CURRENT_TASK_FILE" "prNumber")
+
+# フォルダでステータスを判定
+TASK_STATUS="unknown"
+case "$CURRENT_TASK_FILE" in
+  *"/processing/"*) TASK_STATUS="in_progress" ;;
+  *"/done/"*)       TASK_STATUS="completed" ;;
+  *"/failed/"*)     TASK_STATUS="failed" ;;
+esac
+
+# カウンタはフォルダ内のファイル数で算出
+TASKS_COMPLETED=$(ls "$TASKS_DIR"/done/*.md 2>/dev/null | wc -l | tr -d ' ')
+TASKS_FAILED=$(ls "$TASKS_DIR"/failed/*.md 2>/dev/null | wc -l | tr -d ' ')
 
 TIMESTAMP=$(date +"%Y-%m-%d_%H%M%S")
 TASK_NAME="${CURRENT_TASK%.md}"

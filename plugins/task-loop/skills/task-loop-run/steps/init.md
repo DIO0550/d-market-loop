@@ -17,4 +17,3 @@
    mv {tasksDir}/todo/{タスクファイル} {tasksDir}/processing/{タスクファイル}
    ```
 6. タスクファイルのfrontmatterに `assignedAt` を現在時刻で設定
-7. `task-loop-state.json` にタスクエントリを追加（status: "in_progress"、startedAt）

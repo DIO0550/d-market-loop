@@ -8,7 +8,6 @@
 ```json
 {
   "tasksDir": "tasks",
-  "stateFile": "task-loop-state.json",
   "planFile": "Task.md",
   "baseBranch": "main",
   "branchPrefix": "task/",
@@ -32,7 +31,6 @@
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|-----------|------|
 | `tasksDir` | string | `"tasks"` | タスクファイルのディレクトリ（リポジトリルートからの相対パス） |
-| `stateFile` | string | `"task-loop-state.json"` | 状態ファイルのパス |
 | `planFile` | string | `"Task.md"` | プロジェクトコンテキストファイルのパス（リポジトリルートからの相対パス） |
 | `baseBranch` | string | `"main"` | ベースブランチ名 |
 | `branchPrefix` | string | `"task/"` | タスクブランチ名のプレフィックス |

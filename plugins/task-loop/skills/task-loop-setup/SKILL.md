@@ -73,7 +73,6 @@ session-logs/    # セッションごとのAI動作ログ（Markdown）
 # task-loop
 tasks/
 Task.md
-task-loop-state.json
 .pr_number
 session-logs/
 ```

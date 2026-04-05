@@ -12,6 +12,5 @@
 
 いずれのエラーでも:
 - タスクファイルを `{tasksDir}/processing/` から `{tasksDir}/failed/` に移動する
-- `task-loop-state.json` にエラー状態を記録する
 - `stopOnError` が `true` → ループ終了（終了サマリーへ → `steps/summary.md`）
 - `stopOnError` が `false` → 次のタスクへ

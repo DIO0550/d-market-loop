@@ -18,6 +18,5 @@
    gh pr edit {PR番号} --add-reviewer {reviewer}
    ```
 5. PR番号とURLを記録する
-6. タスクファイルのfrontmatterに `prUrl` を設定
-7. `task-loop-state.json` を更新（prNumber、prUrl）
-8. PR番号を `{tasksDir}/processing/.pr_number` に書き出す（外部ループがPR番号を参照するため）
+6. タスクファイルのfrontmatterに `prUrl` と `prNumber` を設定
+7. PR番号を `{tasksDir}/processing/.pr_number` に書き出す（外部ループがPR番号を参照するため）
