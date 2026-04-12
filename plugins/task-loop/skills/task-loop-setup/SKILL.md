@@ -17,7 +17,7 @@ task-loop-run スキルを使うための初期セットアップを行う。ユ
 
 確認する項目:
 - **baseBranch**: ベースブランチ名（デフォルト: `main`）
-- **reviewer**: PRレビュアー（デフォルト: `copilot`）
+- **reviewer**: PRレビュアー（デフォルト: `copilot-pull-request-reviewer`）
 - **mergeStrategy**: マージ方法（デフォルト: `squash`）
 - **stopOnError**: エラー時に停止するか（デフォルト: `true`）
 - **maxTasks**: 1回の実行で処理する最大タスク数（デフォルト: `0` = 無制限）
@@ -40,7 +40,7 @@ task-loop-run スキルを使うための初期セットアップを行う。ユ
 ```json
 {
   "baseBranch": "develop",
-  "reviewer": "copilot",
+  "reviewer": "copilot-pull-request-reviewer",
   "maxTasks": 1
 }
 ```

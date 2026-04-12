@@ -14,7 +14,7 @@
   "maxTasks": 0,
   "stopOnError": true,
   "timeLimitMinutes": 0,
-  "reviewer": "copilot",
+  "reviewer": "copilot-pull-request-reviewer",
   "mergeStrategy": "squash",
   "deleteBranchAfterMerge": true,
   "reviewPollIntervalSeconds": 30,
@@ -37,7 +37,7 @@
 | `maxTasks` | number | `0` | 処理するタスクの最大数。0 = 無制限 |
 | `stopOnError` | boolean | `true` | タスク失敗時にループを停止するか |
 | `timeLimitMinutes` | number | `0` | ループの制限時間（分）。0 = 無制限 |
-| `reviewer` | string | `"copilot"` | PRのレビュアー。`"copilot"` でGitHub Copilotを指定 |
+| `reviewer` | string | `"copilot-pull-request-reviewer"` | PRのレビュアー。`"copilot-pull-request-reviewer"` でGitHub Copilotを指定 |
 | `mergeStrategy` | string | `"squash"` | マージ戦略: `"squash"`, `"merge"`, `"rebase"` |
 | `deleteBranchAfterMerge` | boolean | `true` | マージ後にブランチを削除するか |
 | `reviewPollIntervalSeconds` | number | `30` | レビュー結果のポーリング間隔（秒） |

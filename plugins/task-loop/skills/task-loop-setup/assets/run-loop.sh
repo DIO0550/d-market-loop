@@ -30,7 +30,7 @@ REVIEW_POLL_INTERVAL=$(read_config "reviewPollIntervalSeconds" "30")
 REVIEW_MAX_WAIT=$(read_config "reviewMaxWaitMinutes" "30")
 AUTO_MERGE_WITHOUT_REVIEW=$(read_config "autoMergeWithoutReview" "false")
 MAX_FIX_ITERATIONS=$(read_config "maxFixIterations" "3")
-REVIEWER=$(read_config "reviewer" "copilot")
+REVIEWER=$(read_config "reviewer" "copilot-pull-request-reviewer")
 SESSION_LOGS_DIR=$(read_config "sessionLogsDir" "$SESSION_LOGS_DIR")
 
 # --- セッションログ ---
@@ -170,7 +170,7 @@ DEFAULT_ALLOWED_COMMANDS=(
   "git status" "git add" "git commit" "git push" "git pull" "git fetch"
   "git checkout" "git switch" "git branch" "git diff" "git log"
   "git stash" "git merge" "git rebase"
-  "gh pr create" "gh pr view" "gh pr merge" "gh pr list" "gh api" "gh auth status"
+  "gh pr create" "gh pr edit" "gh pr view" "gh pr merge" "gh pr list" "gh api" "gh auth status"
   "ls" "cat" "wc" "which" "command -v"
   "mkdir -p" "cp" "mv"
   "tsc --noEmit" "tsc -p" "eslint" "prettier --check" "vitest" "jest"
