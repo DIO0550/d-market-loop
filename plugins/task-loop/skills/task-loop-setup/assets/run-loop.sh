@@ -115,15 +115,20 @@ clean_pr_number() {
 }
 
 # --- レビュー完了をポーリング ---
-# reviewRequests にレビュアーがいる間 = まだレビュー中（待機）
-# reviewRequests からいなくなり reviews に COMMENTED 等が入った = レビュー完了
+# レビュアーのレビュー件数がベースラインから増えたら「新しいレビュー完了」と判定する。
+# 初回は baseline=0、修正後の再レビューでは呼び出し前の件数を渡す。
+#
+# 引数:
+#   $1 - PR番号
+#   $2 - ベースラインのレビュー件数（デフォルト: 0）
 #
 # 戻り値（最終行）:
-#   "REVIEWED"  - レビュアーがレビューを提出済み
+#   "REVIEWED"  - レビュアーが新しいレビューを提出済み
 #   "TIMEOUT"   - 制限時間超過
 #   "NO_PR"     - PR番号が不明
 poll_review() {
   local pr_number="$1"
+  local baseline_count="${2:-0}"
 
   if [ -z "$pr_number" ]; then
     echo "NO_PR"
@@ -133,28 +138,23 @@ poll_review() {
   local max_wait_seconds=$((REVIEW_MAX_WAIT * 60))
   local elapsed=0
 
-  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）"
+  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、ベースライン: ${baseline_count}件、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）"
 
   while [ "$elapsed" -lt "$max_wait_seconds" ]; do
-    # reviewRequests: レビュー依頼中（まだレビューしていない）
-    local still_requested
-    still_requested=$(gh pr view "$pr_number" --json reviewRequests \
-      --jq "[.reviewRequests[].login] | map(select(. == \"${REVIEWER}\")) | length" 2>/dev/null || echo "1")
+    local current_count
+    current_count=$(gh pr view "$pr_number" --json reviews \
+      --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | length" 2>/dev/null || echo "0")
 
-    if [ "$still_requested" -eq 0 ]; then
-      # reviewRequests から消えた → reviews に入ったかチェック
+    if [ "$current_count" -gt "$baseline_count" ]; then
       local review_state
       review_state=$(gh pr view "$pr_number" --json reviews \
         --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | last | .state // empty" 2>/dev/null || echo "")
-
-      if [ -n "$review_state" ]; then
-        echo "レビュー完了を検出（${REVIEWER}: ${review_state}）"
-        echo "REVIEWED"
-        return
-      fi
+      echo "新しいレビューを検出（${REVIEWER}: ${review_state}、${current_count}件目）"
+      echo "REVIEWED"
+      return
     fi
 
-    echo "  レビュー待機中... ${REVIEWER} がレビュー中 (${elapsed}/${max_wait_seconds}秒)"
+    echo "  レビュー待機中... ${REVIEWER} のレビュー ${current_count}/${baseline_count} (${elapsed}/${max_wait_seconds}秒)"
     sleep "$REVIEW_POLL_INTERVAL"
     elapsed=$((elapsed + REVIEW_POLL_INTERVAL))
   done
@@ -267,7 +267,9 @@ PR作成後、レビュー待ちには入らず終了してください。
 
   while true; do
     echo "=== Phase: poll ==="
-    RESULT=$(poll_review "$PR_NUMBER")
+    BASELINE_REVIEW_COUNT=$(gh pr view "$PR_NUMBER" --json reviews \
+      --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | length" 2>/dev/null || echo "0")
+    RESULT=$(poll_review "$PR_NUMBER" "$BASELINE_REVIEW_COUNT")
     # poll_review は複数行出力する（ログ + 最終行が結果）
     REVIEW_STATUS=$(echo "$RESULT" | tail -1)
 
@@ -283,16 +285,31 @@ PR #${PR_NUMBER} のレビューが完了しました。
 
 以下の手順で処理してください:
 
-1. PRのレビューコメントを取得する:
+1. 未解決のレビュースレッドを確認する:
    \`\`\`bash
-   gh api repos/{owner}/{repo}/pulls/${PR_NUMBER}/comments
-   gh api repos/{owner}/{repo}/pulls/${PR_NUMBER}/reviews
+   gh api graphql -f query='
+     query(\$owner: String!, \$repo: String!, \$number: Int!) {
+       repository(owner: \$owner, name: \$repo) {
+         pullRequest(number: \$number) {
+           reviewThreads(first: 100) {
+             nodes {
+               id
+               isResolved
+               comments(first: 10) {
+                 nodes { body path line author { login } }
+               }
+             }
+           }
+         }
+       }
+     }
+   ' -f owner='{owner}' -f repo='{repo}' -F number=${PR_NUMBER}
    \`\`\`
-2. コメント内容を分析し、**修正が必要な指摘があるか**を判断する
-3. 判断結果に応じて:
-   - **指摘なし**（情報提供のみ、褒めるコメント、軽微な提案のみ等）:
+   ※ {owner} と {repo} は \`git remote get-url origin\` から取得すること
+2. 未解決スレッド（\`isResolved: false\`）の有無で判断する:
+   - **未解決スレッドなし**:
      → Steps 7〜8（マージ、状態更新）を実行して終了
-   - **指摘あり**（コード修正が必要な指摘、バグの指摘等）:
+   - **未解決スレッドあり**:
      → Step 6（レビュー指摘修正）を実行
      → 修正をコミット・プッシュしたら、レビュー待ちには入らず終了
 
