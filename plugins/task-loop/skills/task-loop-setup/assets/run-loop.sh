@@ -360,13 +360,27 @@ PR #${PR_NUMBER} のレビューが完了しました。
         FIX_COUNT=$((FIX_COUNT + 1))
 
         if [ "$FIX_COUNT" -gt "$MAX_FIX_ITERATIONS" ]; then
-          echo "修正上限（${MAX_FIX_ITERATIONS}回）に達しました。手動対応が必要です。"
+          echo "修正上限（${MAX_FIX_ITERATIONS}回）に達しました。マージを試みてからfailedに記録します。"
           ERROR_PROMPT="${PROMPT_BASE}
 
 ## 実行モード: error
 
 PR #${PR_NUMBER} のレビュー修正が上限（${MAX_FIX_ITERATIONS}回）に達しました。
-タスクの状態を \`needs_manual_review\` に更新し、エラーリカバリーの手順に従って処理してください。"
+ただし後続タスクのブロックを避けるため、**最終的にマージまで到達させる**ことを最優先とします。
+
+以下の手順で処理してください:
+
+1. **PR のマージを試みる**（Step 7: \`steps/merge.md\`）
+   - mergeable なら \`gh pr merge\` で即マージする
+   - マージコンフリクト等で失敗した場合のみリベース → 再マージを試みる
+2. マージ結果にかかわらずタスクを \`{tasksDir}/failed/\` に移動し、frontmatter に以下を記録する:
+   - \`error: \"fix_limit_exceeded\"\`
+   - \`fixIterations: ${FIX_COUNT}\`
+   - \`merged: true | false\`（マージ成否）
+3. 状態更新のコミット（Step 8: \`steps/update-state.md\` と同等の処理）を push する
+4. **\`stopOnError\` の値に関わらず、このセッションは正常終了すること**（次のタスクに進める必要があるため）
+
+重要: タスクを failed に記録するのは構わないが、PR 自体は可能な限りマージを試みること。"
 
           run_claude_session "error" "$ERROR_PROMPT" "$(get_current_task_name)"
           clean_pr_number
