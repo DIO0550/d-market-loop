@@ -140,22 +140,32 @@ clean_pr_number() {
 }
 
 # --- レビュー完了をポーリング ---
-# レビュアーのレビュー件数がベースラインから増えたら「新しいレビュー完了」と判定する。
-# 初回は baseline=0、修正後の再レビューでは呼び出し前の件数を渡す。
+# PR の HEAD コミット SHA に対して REVIEWER のレビューが存在するかで判定する。
+# これにより以下のケースが全て正しく動作する:
+#   - 初回レビュー: HEAD はそのまま、レビューが来れば検出
+#   - fix 後の再レビュー: push で HEAD が更新され、新 HEAD 上のレビューを待つ
+#   - 途中再開: 現 HEAD を基準にするので古いレビューの誤検知がない
+#   - race なし: baseline の概念自体が不要
 #
 # 引数:
 #   $1 - PR番号
-#   $2 - ベースラインのレビュー件数（デフォルト: 0）
 #
-# 戻り値（stdout の最終行がステータス、進捗ログは stderr へ出力する）:
-#   "REVIEWED"  - レビュアーが新しいレビューを提出済み
+# 戻り値（stdout に status を返す、進捗ログは stderr へ）:
+#   "REVIEWED"  - 現 HEAD に対するレビューが存在
 #   "TIMEOUT"   - 制限時間超過
-#   "NO_PR"     - PR番号が不明
+#   "NO_PR"     - PR番号が不明、または HEAD SHA 取得失敗
 poll_review() {
   local pr_number="$1"
-  local baseline_count="${2:-0}"
 
   if [ -z "$pr_number" ]; then
+    echo "NO_PR"
+    return
+  fi
+
+  local head_sha
+  head_sha=$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid' 2>/dev/null)
+
+  if [ -z "$head_sha" ]; then
     echo "NO_PR"
     return
   fi
@@ -163,23 +173,22 @@ poll_review() {
   local max_wait_seconds=$((REVIEW_MAX_WAIT * 60))
   local elapsed=0
 
-  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、ベースライン: ${baseline_count}件、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）" >&2
+  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、HEAD: ${head_sha:0:8}、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）" >&2
 
   while [ "$elapsed" -lt "$max_wait_seconds" ]; do
-    local current_count
-    current_count=$(gh pr view "$pr_number" --json reviews \
-      --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | length" 2>/dev/null || echo "0")
+    # gh pr view (GraphQL) の author.login は "[bot]" サフィックスなしで REVIEWER 設定値と一致する
+    # （REST API の user.login は "copilot-pull-request-reviewer[bot]" でサフィックスが付くので使えない）
+    local review_state
+    review_state=$(gh pr view "$pr_number" --json reviews \
+      --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\" and .commit.oid == \"${head_sha}\")] | last | .state // empty" 2>/dev/null || echo "")
 
-    if [ "$current_count" -gt "$baseline_count" ]; then
-      local review_state
-      review_state=$(gh pr view "$pr_number" --json reviews \
-        --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | last | .state // empty" 2>/dev/null || echo "")
-      echo "新しいレビューを検出（${REVIEWER}: ${review_state}、${current_count}件目）" >&2
+    if [ -n "$review_state" ]; then
+      echo "HEAD ${head_sha:0:8} 上のレビューを検出（${REVIEWER}: ${review_state}）" >&2
       echo "REVIEWED"
       return
     fi
 
-    echo "  レビュー待機中... ${REVIEWER} のレビュー ${current_count}/${baseline_count} (${elapsed}/${max_wait_seconds}秒)" >&2
+    echo "  レビュー待機中... ${REVIEWER} が HEAD ${head_sha:0:8} をレビュー中 (${elapsed}/${max_wait_seconds}秒)" >&2
     sleep "$REVIEW_POLL_INTERVAL"
     elapsed=$((elapsed + REVIEW_POLL_INTERVAL))
   done
@@ -292,10 +301,8 @@ PR作成後、レビュー待ちには入らず終了してください。
 
   while true; do
     echo "=== Phase: poll ==="
-    BASELINE_REVIEW_COUNT=$(gh pr view "$PR_NUMBER" --json reviews \
-      --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | length" 2>/dev/null || echo "0")
-    # 進捗ログは stderr で表示され、stdout にはステータスのみ返る
-    REVIEW_STATUS=$(poll_review "$PR_NUMBER" "$BASELINE_REVIEW_COUNT")
+    # 進捗ログは stderr、stdout にはステータスのみ ("REVIEWED" / "TIMEOUT" / "NO_PR")
+    REVIEW_STATUS=$(poll_review "$PR_NUMBER")
 
     case "$REVIEW_STATUS" in
       REVIEWED)
