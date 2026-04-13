@@ -44,7 +44,10 @@ run_claude_session() {
   timestamp=$(date +"%Y-%m-%d_%H%M%S")
   local log_file="${SESSION_LOGS_DIR}/${timestamp}_${mode}_${task_name}.md"
 
-  echo "--- Session log: ${log_file} ---"
+  echo ""
+  echo ">>> Claude Session Start: ${mode} / ${task_name}"
+  echo "    Log: ${log_file}"
+  echo ""
 
   {
     echo "---"
@@ -58,7 +61,25 @@ run_claude_session() {
     echo '```'
   } > "$log_file"
 
-  claude -p "$prompt" --allowedTools "$ALLOWED_TOOLS" 2>&1 | tee -a "$log_file"
+  # stream-json でストリーミング出力を取得し、ログには生JSON、ターミナルには jq で整形した要約を流す
+  claude -p "$prompt" --allowedTools "$ALLOWED_TOOLS" \
+      --output-format stream-json --verbose 2>&1 \
+    | tee -a "$log_file" \
+    | while IFS= read -r line; do
+        echo "$line" | jq -r '
+          if .type == "assistant" then
+            (.message.content[]? |
+              if .type == "text" then "  " + .text
+              elif .type == "tool_use" then "  [tool] " + .name + " " + (.input | tostring | .[0:120])
+              else empty end)
+          elif .type == "user" then
+            (.message.content[]? |
+              if .type == "tool_result" then "  [result]"
+              else empty end)
+          elif .type == "result" then
+            "  [done] " + (.subtype // "ok")
+          else empty end' 2>/dev/null || true
+      done
   local exit_code=${PIPESTATUS[0]}
 
   {
@@ -67,6 +88,10 @@ run_claude_session() {
     echo "endedAt: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     echo "exitCode: ${exit_code}"
   } >> "$log_file"
+
+  echo ""
+  echo "<<< Claude Session End (exit: ${exit_code})"
+  echo ""
 
   return $exit_code
 }
@@ -122,7 +147,7 @@ clean_pr_number() {
 #   $1 - PR番号
 #   $2 - ベースラインのレビュー件数（デフォルト: 0）
 #
-# 戻り値（最終行）:
+# 戻り値（stdout の最終行がステータス、進捗ログは stderr へ出力する）:
 #   "REVIEWED"  - レビュアーが新しいレビューを提出済み
 #   "TIMEOUT"   - 制限時間超過
 #   "NO_PR"     - PR番号が不明
@@ -138,7 +163,7 @@ poll_review() {
   local max_wait_seconds=$((REVIEW_MAX_WAIT * 60))
   local elapsed=0
 
-  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、ベースライン: ${baseline_count}件、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）"
+  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、ベースライン: ${baseline_count}件、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）" >&2
 
   while [ "$elapsed" -lt "$max_wait_seconds" ]; do
     local current_count
@@ -149,17 +174,17 @@ poll_review() {
       local review_state
       review_state=$(gh pr view "$pr_number" --json reviews \
         --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | last | .state // empty" 2>/dev/null || echo "")
-      echo "新しいレビューを検出（${REVIEWER}: ${review_state}、${current_count}件目）"
+      echo "新しいレビューを検出（${REVIEWER}: ${review_state}、${current_count}件目）" >&2
       echo "REVIEWED"
       return
     fi
 
-    echo "  レビュー待機中... ${REVIEWER} のレビュー ${current_count}/${baseline_count} (${elapsed}/${max_wait_seconds}秒)"
+    echo "  レビュー待機中... ${REVIEWER} のレビュー ${current_count}/${baseline_count} (${elapsed}/${max_wait_seconds}秒)" >&2
     sleep "$REVIEW_POLL_INTERVAL"
     elapsed=$((elapsed + REVIEW_POLL_INTERVAL))
   done
 
-  echo "レビュータイムアウト（${REVIEW_MAX_WAIT}分経過）"
+  echo "レビュータイムアウト（${REVIEW_MAX_WAIT}分経過）" >&2
   echo "TIMEOUT"
 }
 
@@ -269,9 +294,8 @@ PR作成後、レビュー待ちには入らず終了してください。
     echo "=== Phase: poll ==="
     BASELINE_REVIEW_COUNT=$(gh pr view "$PR_NUMBER" --json reviews \
       --jq "[.reviews[] | select(.author.login == \"${REVIEWER}\")] | length" 2>/dev/null || echo "0")
-    RESULT=$(poll_review "$PR_NUMBER" "$BASELINE_REVIEW_COUNT")
-    # poll_review は複数行出力する（ログ + 最終行が結果）
-    REVIEW_STATUS=$(echo "$RESULT" | tail -1)
+    # 進捗ログは stderr で表示され、stdout にはステータスのみ返る
+    REVIEW_STATUS=$(poll_review "$PR_NUMBER" "$BASELINE_REVIEW_COUNT")
 
     case "$REVIEW_STATUS" in
       REVIEWED)
