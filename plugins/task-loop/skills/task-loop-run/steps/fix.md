@@ -51,9 +51,23 @@ gh pr edit {PR番号} --add-reviewer {reviewer}
 - あれば現在値 + 1 を書き込む
 - 次回 `steps/review-check.md` Step 1 で `maxFixIterations` に到達すると「上限到達 → best-effort マージ」フローに入る
 
-### Step 7: セッション終了
-- **レビュー待ちには入らず AI セッションを終了する**（ポーリングは shell が担当）
-- 外部ループが再度レビューポーリングを行い、次の review-check を起動する
+### Step 7: セッション終了（⚠️ 絶対に merge に進まない）
+
+**このセッションはここで必ず終了する。** 以下のいずれもやってはいけない:
+
+- ❌ `reviewThreads` を再取得して「未解決なし」を確認する
+- ❌ `steps/review-check.md` に戻って分岐し直す
+- ❌ `steps/merge.md` を実行する
+- ❌ `gh pr merge` を呼び出す
+
+Step 4 で修正済みスレッドを `resolveReviewThread` で resolved にしているため、
+この時点で `reviewThreads` を再取得すると「未解決なし」に見える。ここでマージして
+しまうと、**Copilot が新しいレビューを投稿する前に PR がマージされる**という
+致命的な race condition になる（実際にこの不具合が観測されている）。
+
+次の Copilot レビューは外部ループ (`run-loop.sh` の `poll_review`) が拾って、
+**別の AI セッション**で `review-check.md` を起動する。本セッションの責務は
+「修正して push して再レビュー依頼するところまで」で完結する。
 
 ## 終了前チェックリスト
 

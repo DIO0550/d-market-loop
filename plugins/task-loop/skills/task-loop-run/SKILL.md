@@ -31,13 +31,11 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
    - `references/state-management.md` の中断復帰手順に従って適切なステップから再開
    - → **終了**
 
-3. **`processing/` にタスクあり、`.pr_number` あり** → レビュー結果判定フローへ:
-   - `steps/review-check.md` に従う
-   - `.fix_count` と `task-loop-config.json` の `maxFixIterations` を読む
-   - `.fix_count >= maxFixIterations` → 「best-effort マージ + failed 記録」フロー（`steps/error-recovery.md` の `fix_limit_exceeded` セクション）
-   - 未解決スレッドあり → `steps/fix.md`（ここで `.fix_count` をインクリメント）
-   - 未解決スレッドなし → `steps/merge.md` → `steps/update-state.md`
-   - → **終了**
+3. **`processing/` にタスクあり、`.pr_number` あり** → レビュー結果判定フローへ。`steps/review-check.md` に従い、以下の **3a / 3b / 3c のいずれか一つだけ** を実行して即終了する:
+
+   - **3a**: `.fix_count >= maxFixIterations` → 「best-effort マージ + failed 記録」フロー（`steps/error-recovery.md` の `fix_limit_exceeded` セクション） → **終了**
+   - **3b**: 未解決スレッドあり → `steps/fix.md` の全手順（`.fix_count` インクリメントまで）→ **このセッションは即終了**。⚠️ fix.md 完了後に reviewThreads を再取得したり `steps/merge.md` に進んではならない。次の Copilot レビューは shell が poll で拾い、別セッションで起動される
+   - **3c**: 未解決スレッドなし → `steps/merge.md` → `steps/update-state.md` → **終了**
 
 ### ステップファイル一覧
 

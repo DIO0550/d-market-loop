@@ -53,7 +53,10 @@ gh api graphql -f query='
 
 ### Step 3: `isResolved: false` のスレッドの有無で分岐
 
-- **未解決スレッドなし** → `steps/merge.md` → `steps/update-state.md`
-- **未解決スレッドあり** → `steps/fix.md` の**全手順**を実行
+**分岐は一方通行。fix ルートに入ったら merge ルートには絶対に戻らない。**
+
+- **未解決スレッドなし** → `steps/merge.md` → `steps/update-state.md` → **終了**
+- **未解決スレッドあり** → `steps/fix.md` の**全手順**を実行 → **終了**
   - 修正 → コミット・プッシュ → スレッド解決 → 再レビュー依頼 → `.fix_count` インクリメント まで**必ず全て実施**する
   - 再レビュー依頼（`gh pr edit --add-reviewer`）を省略すると外部ループが次のレビューを永久に待ち続ける
+  - ⚠️ **fix.md 完了後に `reviewThreads` を再取得して merge に進んではならない。** Step 4 で自分で resolved にしているため「未解決なし」に見えるが、Copilot の新しいレビューはまだ届いていない。次の review-check は別セッションで起動される

@@ -186,10 +186,16 @@ poll_review() {
 
 # --- レビューが進行中かを判定する ---
 # 以下のいずれかに該当すれば "進行中" とみなす:
-#   1. REVIEWER の review に state=PENDING のものが存在する
-#   2. reviewThreads の任意のコメントの createdAt が REVIEW_IN_PROGRESS_WINDOW 秒以内
+#   1. REVIEWER が reviewRequests (pending reviewers) に入っている
+#      → 再レビュー依頼後、まだレビューが返ってきていない状態。Copilot の
+#        "started reviewing" 状態をここで捉える
+#   2. REVIEWER の review に state=PENDING のものが存在する
+#      （bot の draft review は API で見えないので実質的に human reviewer 用）
+#   3. reviewThreads の任意のコメントの createdAt が REVIEW_IN_PROGRESS_WINDOW 秒以内
+#      → 追加コメントを順次投稿している最中の race condition 対策
 #
 # stdout に判定結果を返す:
+#   "REQUESTED"      - REVIEWER が pending reviewers にいる
 #   "PENDING"        - REVIEWER に PENDING review あり
 #   "RECENT_COMMENT" - 直近にコメント追加あり
 #   ""               - 進行中でない（安定）
@@ -205,6 +211,15 @@ check_review_in_progress() {
       query($owner: String!, $repo: String!, $number: Int!) {
         repository(owner: $owner, name: $repo) {
           pullRequest(number: $number) {
+            reviewRequests(first: 100) {
+              nodes {
+                requestedReviewer {
+                  __typename
+                  ... on User { login }
+                  ... on Bot { login }
+                }
+              }
+            }
             reviews(first: 100) {
               nodes { author { login } state }
             }
@@ -220,12 +235,16 @@ check_review_in_progress() {
       }
     ' \
     --jq '
-      ([.data.repository.pullRequest.reviews.nodes[]
-        | select(.author.login == $reviewer and .state == "PENDING")] | length) as $pending
+      ([.data.repository.pullRequest.reviewRequests.nodes[]
+        | .requestedReviewer
+        | select(. != null and (.login? // "") == $reviewer)] | length) as $requested
+      | ([.data.repository.pullRequest.reviews.nodes[]
+          | select(.author.login == $reviewer and .state == "PENDING")] | length) as $pending
       | ([.data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].createdAt
           | fromdateiso8601] | max // 0) as $latest
       | ($window | tonumber) as $w
-      | if $pending > 0 then "PENDING"
+      | if $requested > 0 then "REQUESTED"
+        elif $pending > 0 then "PENDING"
         elif ($latest > 0 and (now - $latest) < $w) then "RECENT_COMMENT"
         else "" end
     ' 2>/dev/null || echo ""
@@ -256,6 +275,9 @@ wait_for_review_stable() {
       "")
         echo "  レビューは安定しています（経過: ${elapsed}秒）" >&2
         return
+        ;;
+      REQUESTED)
+        echo "  ${REVIEWER} が pending reviewers にいます（まだレビューを返していない）（${elapsed}/${REVIEW_STABILIZE_MAX}秒）" >&2
         ;;
       PENDING)
         echo "  ${REVIEWER} の review が PENDING 状態（${elapsed}/${REVIEW_STABILIZE_MAX}秒）" >&2
