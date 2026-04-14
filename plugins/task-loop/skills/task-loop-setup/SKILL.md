@@ -32,20 +32,38 @@ task-loop-run スキルを使うための初期セットアップを行う。ユ
 ### Step 2: task-loop-config.json の生成
 
 ヒアリング結果をもとに、リポジトリルートに `task-loop-config.json` を生成する。
-デフォルト値と異なるフィールドのみ記述する（全フィールドを書く必要はない）。
+**全フィールドを明示的に書き出す**（ヒアリングしなかった項目もデフォルト値で埋める）。
+ユーザーが後から設定を見渡して調整できるようにするためで、未記載のフィールドがあると
+「何が設定可能か」が分かりづらくなるのを避ける目的。
 
-設定フォーマットの詳細は `references/loop-config-format.md` を参照。
+設定フォーマットと各フィールドのデフォルト値は `references/loop-config-format.md` を参照し、
+そこに記載されたスキーマの全キーを含むこと。
 
-例（デフォルトから変更があるもののみ）:
+例（全てデフォルトの場合でも全キーを書き出す）:
 ```json
 {
-  "baseBranch": "develop",
+  "tasksDir": "tasks",
+  "planFile": "Task.md",
+  "baseBranch": "main",
+  "branchPrefix": "task/",
+  "maxTasks": 0,
+  "stopOnError": true,
+  "timeLimitMinutes": 0,
   "reviewer": "copilot-pull-request-reviewer",
-  "maxTasks": 1
+  "mergeStrategy": "squash",
+  "deleteBranchAfterMerge": true,
+  "reviewPollIntervalSeconds": 30,
+  "reviewStabilizeIntervalSeconds": 15,
+  "reviewStabilizeMaxSeconds": 300,
+  "reviewInProgressWindowSeconds": 30,
+  "maxFixIterations": 3,
+  "prBodyFooter": "Automated by task-loop-run",
+  "sessionLogsDir": "session-logs",
+  "allowedCommands": []
 }
 ```
 
-全てデフォルトの場合は、空のオブジェクト `{}` で生成する。
+ヒアリングで変更があった項目だけを上書きし、残りはデフォルト値のまま書き出す。
 
 ### Step 3: タスクディレクトリの作成
 

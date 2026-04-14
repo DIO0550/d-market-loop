@@ -23,7 +23,8 @@
   "reviewInProgressWindowSeconds": 30,
   "maxFixIterations": 3,
   "prBodyFooter": "Automated by task-loop-run",
-  "sessionLogsDir": "session-logs"
+  "sessionLogsDir": "session-logs",
+  "allowedCommands": []
 }
 ```
 
@@ -48,4 +49,5 @@
 | `maxFixIterations` | number | `3` | レビュー指摘修正の最大回数。超えると `steps/review-check.md` が best-effort マージ → failed 記録フローに入る |
 | `prBodyFooter` | string | `"Automated by task-loop-run"` | PR本文のフッター |
 | `sessionLogsDir` | string | `"session-logs"` | セッションログの出力ディレクトリ（リポジトリルートからの相対パス） |
+| `allowedCommands` | string[] | `[]` | プロジェクト固有の追加許可コマンド。git/gh/tsc/eslint/pnpm 基本コマンド等は run-loop.sh のデフォルトで許可済みのため、ここには追加で必要なものだけ記載する。詳細は `task-loop-setup/references/allowed-commands.md` を参照 |
 
