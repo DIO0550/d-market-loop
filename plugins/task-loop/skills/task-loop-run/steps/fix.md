@@ -27,6 +27,9 @@
    ```bash
    gh pr edit {PR番号} --add-reviewer {reviewer}
    ```
-6. 修正回数のカウントと上限チェックは外部ループ（`run-loop.sh`）が管理する
+6. 修正回数カウンタ `{tasksDir}/processing/.fix_count` をインクリメントする:
+   - ファイルが無ければ `1` を書き込む
+   - あれば現在値 + 1 を書き込む
+   - `task-loop-config.json` の `maxFixIterations` に次回到達すると `steps/review-check.md` Step 1 で「上限到達 → best-effort マージ」フローに入る
 7. 修正コミット・プッシュ後、**レビュー待ちには入らず AIセッションを終了する**
-   - 外部ループが再度レビューポーリングを行い、必要に応じて再度 fix モードで呼び出す
+   - 外部ループが再度レビューポーリングを行い、次の review-check を起動する

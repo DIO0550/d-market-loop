@@ -27,11 +27,14 @@ read_config() {
 }
 
 REVIEW_POLL_INTERVAL=$(read_config "reviewPollIntervalSeconds" "30")
-REVIEW_MAX_WAIT=$(read_config "reviewMaxWaitMinutes" "30")
-AUTO_MERGE_WITHOUT_REVIEW=$(read_config "autoMergeWithoutReview" "false")
-MAX_FIX_ITERATIONS=$(read_config "maxFixIterations" "3")
 REVIEWER=$(read_config "reviewer" "copilot-pull-request-reviewer")
 SESSION_LOGS_DIR=$(read_config "sessionLogsDir" "$SESSION_LOGS_DIR")
+REVIEW_STABILIZE_INTERVAL=$(read_config "reviewStabilizeIntervalSeconds" "15")
+REVIEW_STABILIZE_MAX=$(read_config "reviewStabilizeMaxSeconds" "300")
+REVIEW_IN_PROGRESS_WINDOW=$(read_config "reviewInProgressWindowSeconds" "30")
+
+# リポジトリ情報（安定化判定の GraphQL クエリで使用）
+OWNER_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
 
 # --- セッションログ ---
 mkdir -p "$SESSION_LOGS_DIR"
@@ -139,43 +142,31 @@ clean_pr_number() {
   rm -f "$PR_NUMBER_FILE"
 }
 
-# --- レビュー完了をポーリング ---
-# PR の HEAD コミット SHA に対して REVIEWER のレビューが存在するかで判定する。
-# これにより以下のケースが全て正しく動作する:
-#   - 初回レビュー: HEAD はそのまま、レビューが来れば検出
-#   - fix 後の再レビュー: push で HEAD が更新され、新 HEAD 上のレビューを待つ
-#   - 途中再開: 現 HEAD を基準にするので古いレビューの誤検知がない
-#   - race なし: baseline の概念自体が不要
+# --- レビュー完了を無限ポーリング ---
+# PR の HEAD コミット SHA に対して REVIEWER のレビューが届くまで無限に待つ。
+# タイムアウトは設けない: 本当に返ってこない場合は人間が Ctrl+C で介入する想定。
 #
 # 引数:
 #   $1 - PR番号
-#
-# 戻り値（stdout に status を返す、進捗ログは stderr へ）:
-#   "REVIEWED"  - 現 HEAD に対するレビューが存在
-#   "TIMEOUT"   - 制限時間超過
-#   "NO_PR"     - PR番号が不明、または HEAD SHA 取得失敗
 poll_review() {
   local pr_number="$1"
 
   if [ -z "$pr_number" ]; then
-    echo "NO_PR"
-    return
+    echo "Error: PR番号が指定されていません" >&2
+    return 1
   fi
 
   local head_sha
   head_sha=$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid' 2>/dev/null)
 
   if [ -z "$head_sha" ]; then
-    echo "NO_PR"
-    return
+    echo "Error: HEAD SHA を取得できませんでした" >&2
+    return 1
   fi
 
-  local max_wait_seconds=$((REVIEW_MAX_WAIT * 60))
-  local elapsed=0
+  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、HEAD: ${head_sha:0:8}、間隔: ${REVIEW_POLL_INTERVAL}秒）" >&2
 
-  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、HEAD: ${head_sha:0:8}、間隔: ${REVIEW_POLL_INTERVAL}秒、上限: ${REVIEW_MAX_WAIT}分）" >&2
-
-  while [ "$elapsed" -lt "$max_wait_seconds" ]; do
+  while true; do
     # gh pr view (GraphQL) の author.login は "[bot]" サフィックスなしで REVIEWER 設定値と一致する
     # （REST API の user.login は "copilot-pull-request-reviewer[bot]" でサフィックスが付くので使えない）
     local review_state
@@ -184,17 +175,100 @@ poll_review() {
 
     if [ -n "$review_state" ]; then
       echo "HEAD ${head_sha:0:8} 上のレビューを検出（${REVIEWER}: ${review_state}）" >&2
-      echo "REVIEWED"
-      return
+      return 0
     fi
 
-    echo "  レビュー待機中... ${REVIEWER} が HEAD ${head_sha:0:8} をレビュー中 (${elapsed}/${max_wait_seconds}秒)" >&2
+    echo "  レビュー待機中... ${REVIEWER} が HEAD ${head_sha:0:8} をレビュー中" >&2
     sleep "$REVIEW_POLL_INTERVAL"
-    elapsed=$((elapsed + REVIEW_POLL_INTERVAL))
+  done
+}
+
+# --- レビューが進行中かを判定する ---
+# 以下のいずれかに該当すれば "進行中" とみなす:
+#   1. REVIEWER の review に state=PENDING のものが存在する
+#   2. reviewThreads の任意のコメントの createdAt が REVIEW_IN_PROGRESS_WINDOW 秒以内
+#
+# stdout に判定結果を返す:
+#   "PENDING"        - REVIEWER に PENDING review あり
+#   "RECENT_COMMENT" - 直近にコメント追加あり
+#   ""               - 進行中でない（安定）
+check_review_in_progress() {
+  local pr_number="$1"
+  local owner=${OWNER_REPO%/*}
+  local repo=${OWNER_REPO#*/}
+
+  gh api graphql \
+    -f owner="$owner" -f repo="$repo" -F number="$pr_number" \
+    -F reviewer="$REVIEWER" -F window="$REVIEW_IN_PROGRESS_WINDOW" \
+    -f query='
+      query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $number) {
+            reviews(first: 100) {
+              nodes { author { login } state }
+            }
+            reviewThreads(first: 100) {
+              nodes {
+                comments(first: 100) {
+                  nodes { createdAt }
+                }
+              }
+            }
+          }
+        }
+      }
+    ' \
+    --jq '
+      ([.data.repository.pullRequest.reviews.nodes[]
+        | select(.author.login == $reviewer and .state == "PENDING")] | length) as $pending
+      | ([.data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].createdAt
+          | fromdateiso8601] | max // 0) as $latest
+      | ($window | tonumber) as $w
+      | if $pending > 0 then "PENDING"
+        elif ($latest > 0 and (now - $latest) < $w) then "RECENT_COMMENT"
+        else "" end
+    ' 2>/dev/null || echo ""
+}
+
+# --- レビューが安定するまで待つ ---
+# check_review_in_progress が空文字（進行中でない）を返すまでポーリングする。
+# 「まだ指摘が出揃っていないのにマージしてしまう」race condition を防ぐ。
+#
+# 引数:
+#   $1 - PR番号
+wait_for_review_stable() {
+  local pr_number="$1"
+
+  if [ -z "$OWNER_REPO" ]; then
+    echo "  OWNER_REPO を取得できないため安定化待ちをスキップします" >&2
+    return
+  fi
+
+  local elapsed=0
+  echo "  レビュー進行中チェック開始（間隔: ${REVIEW_STABILIZE_INTERVAL}秒、進行中窓: ${REVIEW_IN_PROGRESS_WINDOW}秒、上限: ${REVIEW_STABILIZE_MAX}秒）" >&2
+
+  while [ "$elapsed" -lt "$REVIEW_STABILIZE_MAX" ]; do
+    local status
+    status=$(check_review_in_progress "$pr_number")
+
+    case "$status" in
+      "")
+        echo "  レビューは安定しています（経過: ${elapsed}秒）" >&2
+        return
+        ;;
+      PENDING)
+        echo "  ${REVIEWER} の review が PENDING 状態（${elapsed}/${REVIEW_STABILIZE_MAX}秒）" >&2
+        ;;
+      RECENT_COMMENT)
+        echo "  直近${REVIEW_IN_PROGRESS_WINDOW}秒以内に新しいコメントあり（${elapsed}/${REVIEW_STABILIZE_MAX}秒）" >&2
+        ;;
+    esac
+
+    sleep "$REVIEW_STABILIZE_INTERVAL"
+    elapsed=$((elapsed + REVIEW_STABILIZE_INTERVAL))
   done
 
-  echo "レビュータイムアウト（${REVIEW_MAX_WAIT}分経過）" >&2
-  echo "TIMEOUT"
+  echo "  安定化待機が上限(${REVIEW_STABILIZE_MAX}秒)に達しました。現状で AI に引き継ぎます。" >&2
 }
 
 PROMPT_BASE="$(cat "$INSTRUCTIONS_FILE")"
@@ -259,35 +333,32 @@ build_allowed_commands_prompt() {
 PROMPT_BASE="${PROMPT_BASE}
 $(build_allowed_commands_prompt)"
 
+# --- AI を起動するヘルパー ---
+# shell は状態・モードを一切渡さない。AI は task-loop-run スキルの指示に従い、
+# `{tasksDir}/processing/` の現在の状態（タスクファイル・.pr_number・.fix_count）から
+# 次にすべきことを自己判定する。
+run_ai() {
+  run_claude_session "task-loop" "$PROMPT_BASE" "$(get_current_task_name)"
+}
+
 while true; do
   if ! has_remaining_tasks; then
     echo "全タスクが処理済みです"
     break
   fi
 
-  # --- Phase 1: processing中のタスクがある場合、中断復帰チェック ---
+  # --- Phase 1: 実装 + PR作成（必要な場合のみ） ---
   PR_NUMBER=""
   if has_processing_task; then
     PR_NUMBER=$(read_pr_number)
   fi
 
   if [ -n "$PR_NUMBER" ] && has_processing_task; then
-    # PR作成済みのprocessingタスクがある → レビューフローへ
     echo "PR #${PR_NUMBER} が存在する処理中タスクを検出。レビューフローに入ります。"
   else
-    # --- Phase 1: 実装 + PR作成 ---
     echo "=== Phase: implement ==="
-    IMPLEMENT_PROMPT="${PROMPT_BASE}
+    run_ai
 
-## 実行モード: implement
-
-Steps 1〜4（タスク初期化、実装、コミット、PR作成）までを実行してください。
-PR作成後、レビュー待ちには入らず終了してください。
-**重要**: PR作成後、PR番号を \`${PR_NUMBER_FILE}\` に書き出してください。"
-
-    run_claude_session "implement" "$IMPLEMENT_PROMPT" "$(get_current_task_name)"
-
-    # PR番号を取得
     PR_NUMBER=$(read_pr_number)
 
     if [ -z "$PR_NUMBER" ]; then
@@ -296,131 +367,27 @@ PR作成後、レビュー待ちには入らず終了してください。
     fi
   fi
 
-  # --- Phase 2: レビューポーリング (shell側) ---
-  FIX_COUNT=0
-
+  # --- Phase 2: レビュー待ち → review-check のループ ---
   while true; do
     echo "=== Phase: poll ==="
-    # 進捗ログは stderr、stdout にはステータスのみ ("REVIEWED" / "TIMEOUT" / "NO_PR")
-    REVIEW_STATUS=$(poll_review "$PR_NUMBER")
+    if ! poll_review "$PR_NUMBER"; then
+      echo "Error: レビューポーリングに失敗しました。次のタスクに進みます。"
+      clean_pr_number
+      break
+    fi
 
-    case "$REVIEW_STATUS" in
-      REVIEWED)
-        # レビューが提出された → AIにコメント内容を分析させる
-        echo "=== Phase: review-check ==="
-        REVIEW_CHECK_PROMPT="${PROMPT_BASE}
+    # レビュー検出後、Copilot が inline コメントを追加投稿し終えるのを待つ
+    wait_for_review_stable "$PR_NUMBER"
 
-## 実行モード: review-check
+    echo "=== Phase: review-check ==="
+    run_ai
 
-PR #${PR_NUMBER} のレビューが完了しました。
-
-以下の手順で処理してください:
-
-1. 未解決のレビュースレッドを確認する:
-   \`\`\`bash
-   gh api graphql -f query='
-     query(\$owner: String!, \$repo: String!, \$number: Int!) {
-       repository(owner: \$owner, name: \$repo) {
-         pullRequest(number: \$number) {
-           reviewThreads(first: 100) {
-             nodes {
-               id
-               isResolved
-               comments(first: 10) {
-                 nodes { body path line author { login } }
-               }
-             }
-           }
-         }
-       }
-     }
-   ' -f owner='{owner}' -f repo='{repo}' -F number=${PR_NUMBER}
-   \`\`\`
-   ※ {owner} と {repo} は \`git remote get-url origin\` から取得すること
-2. 未解決スレッド（\`isResolved: false\`）の有無で判断する:
-   - **未解決スレッドなし**:
-     → Steps 7〜8（マージ、状態更新）を実行して終了
-   - **未解決スレッドあり**:
-     → Step 6（レビュー指摘修正）の**全手順**を実行して終了
-     → 修正 → コミット・プッシュ → スレッド解決 → 再レビュー依頼 まで**必ず全て実施**すること
-     → 再レビュー依頼（\`gh pr edit --add-reviewer\`）を省略すると外部ループが次のレビューを永久に待ち続ける
-
-修正回数: ${FIX_COUNT}/${MAX_FIX_ITERATIONS}"
-
-        run_claude_session "review-check" "$REVIEW_CHECK_PROMPT" "$(get_current_task_name)"
-
-        # AIの処理結果を確認: タスクが done/ に移動していればマージ完了
-        if ! has_processing_task; then
-          echo "タスクがマージされました。"
-          clean_pr_number
-          break
-        fi
-
-        # まだ processing にある = 修正して再レビュー待ち
-        FIX_COUNT=$((FIX_COUNT + 1))
-
-        if [ "$FIX_COUNT" -gt "$MAX_FIX_ITERATIONS" ]; then
-          echo "修正上限（${MAX_FIX_ITERATIONS}回）に達しました。マージを試みてからfailedに記録します。"
-          ERROR_PROMPT="${PROMPT_BASE}
-
-## 実行モード: error
-
-PR #${PR_NUMBER} のレビュー修正が上限（${MAX_FIX_ITERATIONS}回）に達しました。
-ただし後続タスクのブロックを避けるため、**最終的にマージまで到達させる**ことを最優先とします。
-
-以下の手順で処理してください:
-
-1. **PR のマージを試みる**（Step 7: \`steps/merge.md\`）
-   - mergeable なら \`gh pr merge\` で即マージする
-   - マージコンフリクト等で失敗した場合のみリベース → 再マージを試みる
-2. マージ結果にかかわらずタスクを \`{tasksDir}/failed/\` に移動し、frontmatter に以下を記録する:
-   - \`error: \"fix_limit_exceeded\"\`
-   - \`fixIterations: ${FIX_COUNT}\`
-   - \`merged: true | false\`（マージ成否）
-3. 状態更新のコミット（Step 8: \`steps/update-state.md\` と同等の処理）を push する
-4. **\`stopOnError\` の値に関わらず、このセッションは正常終了すること**（次のタスクに進める必要があるため）
-
-重要: タスクを failed に記録するのは構わないが、PR 自体は可能な限りマージを試みること。"
-
-          run_claude_session "error" "$ERROR_PROMPT" "$(get_current_task_name)"
-          clean_pr_number
-          break
-        fi
-        # ループの先頭に戻って再ポーリング
-        ;;
-
-      TIMEOUT)
-        if [ "$AUTO_MERGE_WITHOUT_REVIEW" = "true" ]; then
-          echo "タイムアウト: autoMergeWithoutReview=true のため自動マージします。"
-          MERGE_PROMPT="${PROMPT_BASE}
-
-## 実行モード: review-check
-
-PR #${PR_NUMBER} のレビューがタイムアウトしました。autoMergeWithoutReview が有効なため、マージを実行します。
-Steps 7〜8（マージ、状態更新）を実行してください。"
-
-          run_claude_session "merge" "$MERGE_PROMPT" "$(get_current_task_name)"
-        else
-          echo "タイムアウト: レビューが得られませんでした。次のタスクに進みます。"
-          TIMEOUT_PROMPT="${PROMPT_BASE}
-
-## 実行モード: error
-
-PR #${PR_NUMBER} のレビューがタイムアウトしました（${REVIEW_MAX_WAIT}分）。
-autoMergeWithoutReview=false のため、ユーザーに通知して次のタスクへ進む処理を行ってください。
-エラーリカバリーの手順に従ってタスクの状態を更新してください。"
-
-          run_claude_session "timeout-error" "$TIMEOUT_PROMPT" "$(get_current_task_name)"
-        fi
-        clean_pr_number
-        break
-        ;;
-
-      NO_PR)
-        echo "Error: PR番号が取得できませんでした。"
-        clean_pr_number
-        break
-        ;;
-    esac
+    # タスクが processing/ から外れていればマージ完了 or failed に退避済み
+    if ! has_processing_task; then
+      echo "タスクが処理済みになりました。"
+      clean_pr_number
+      break
+    fi
+    # まだ processing に残っている = 修正後の再レビュー待ち → ループ先頭へ
   done
 done

@@ -7,17 +7,37 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 `tasks/` フォルダのタスクファイルを順番に処理し、各タスクについて 実装 → コミット → PR → レビュー → 修正 → マージ のサイクルを自動実行する。
 
-## 実行モード
+## 呼び出しモデル
 
-外部ループ（`run-loop.sh`）からモード別に呼び出される。レビューのポーリング待ちはシェル側が担当し、AIセッション内では `sleep` によるポーリングを行わない。
+外部ループ（`run-loop.sh`）は AI に **モードや状態を一切渡さない**。AI は毎回このスキルの指示に従い、`{tasksDir}/` の現在の状態から次に何をすべきか自己判定する。shell はタスクディレクトリの監視とレビューのポーリング待ちだけを行う。
 
-| モード | 読み込むステップファイル | 説明 |
-|--------|------------------------|------|
-| `implement` | `init` → `implement` → `self-review` → `commit` → `pr` → `review-wait` | タスク初期化〜PR作成。PR作成後に終了 |
-| `review-check` | `fix` or `merge` → `update-state` | レビュー分析。指摘あり→修正、なし→マージ |
-| `error` | `error-recovery` | エラー状態の記録と後処理 |
+状態ソース:
+- **タスク配置**: `{tasksDir}/todo/` / `{tasksDir}/processing/` / `{tasksDir}/done/` / `{tasksDir}/failed/`
+- **PR番号**: `{tasksDir}/processing/.pr_number`（`steps/pr.md` が書き出す）
+- **修正回数**: `{tasksDir}/processing/.fix_count`（`steps/fix.md` がインクリメントする）
+- **設定**: `task-loop-config.json`
 
-**実行手順**: モードに対応するステップファイルを `steps/` から順に読み込み、その指示に従って処理する。各ステップは1ファイル1責務で分割されている。
+> レビューのポーリング待ち・「レビュー進行中」判定はシェル側が担当する。AIセッション内で `sleep` によるポーリングや進行中チェックを行ってはならない。
+
+## 自己判定フロー
+
+起動したら以下の順で状態を確認し、対応するステップ列を実行する:
+
+1. **`processing/` にタスクファイルが無い** → `{tasksDir}/todo/` から次のタスクを選び、
+   - `steps/init.md` → `steps/implement.md` → `steps/self-review.md` → `steps/commit.md` → `steps/pr.md` → `steps/review-wait.md`
+   - → **終了**
+
+2. **`processing/` にタスクあり、`.pr_number` 無し** → 実装途中で中断されたとみなし、
+   - `references/state-management.md` の中断復帰手順に従って適切なステップから再開
+   - → **終了**
+
+3. **`processing/` にタスクあり、`.pr_number` あり** → レビュー結果判定フローへ:
+   - `steps/review-check.md` に従う
+   - `.fix_count` と `task-loop-config.json` の `maxFixIterations` を読む
+   - `.fix_count >= maxFixIterations` → 「best-effort マージ + failed 記録」フロー（`steps/error-recovery.md` の `fix_limit_exceeded` セクション）
+   - 未解決スレッドあり → `steps/fix.md`（ここで `.fix_count` をインクリメント）
+   - 未解決スレッドなし → `steps/merge.md` → `steps/update-state.md`
+   - → **終了**
 
 ### ステップファイル一覧
 
@@ -29,6 +49,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 | `steps/commit.md` | コミット（ステージング、メッセージ作成） |
 | `steps/pr.md` | PR作成（プッシュ、PR本文生成、レビュアー設定） |
 | `steps/review-wait.md` | レビュー待ち（外部ループが担当） |
+| `steps/review-check.md` | レビュー結果の判定（fix/merge 分岐） |
 | `steps/fix.md` | レビュー指摘修正 |
 | `steps/merge.md` | PRマージ |
 | `steps/update-state.md` | 状態更新（タスク完了記録） |
