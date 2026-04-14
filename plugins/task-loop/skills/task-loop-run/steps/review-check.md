@@ -16,8 +16,13 @@
 
 ### Step 1: 上限判定（fix_count >= maxFixIterations）
 
-`.fix_count` が `maxFixIterations` 以上なら、これ以上 fix しても収束しないと判断し、
+`maxFixIterations` が **`-1` の場合は無制限**（解決するまで fix し続ける）とみなし、本ステップはスキップして Step 2 へ進む。
+
+それ以外で `.fix_count` が `maxFixIterations` 以上なら、これ以上 fix しても収束しないと判断し、
 **後続タスクのブロックを避けるため可能な限りマージする**:
+
+- `maxFixIterations = 0` → `.fix_count` (0) >= 0 で即ヒット → fix せず即フォールバックへ
+- `maxFixIterations = 3` → 3回 fix した後（`.fix_count = 3`）でヒット
 
 → `steps/error-recovery.md` の `fix_limit_exceeded` セクションへ進む（best-effort merge + failed 記録 + 正常終了）
 
