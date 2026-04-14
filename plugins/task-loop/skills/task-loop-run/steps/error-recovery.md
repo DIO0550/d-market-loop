@@ -13,8 +13,9 @@
    - `error: "fix_limit_exceeded"`
    - `merged: true | false`（マージ成否）
 3. 状態更新のコミット（`steps/update-state.md` と同等の処理）を push する
-4. `{tasksDir}/processing/.pr_number` と `{tasksDir}/processing/.fix_count` を削除する
-5. **`stopOnError` の値に関わらず、このセッションは正常終了する**（次のタスクに進める必要があるため）
+4. **`stopOnError` の値に関わらず、このセッションは正常終了する**（次のタスクに進める必要があるため）
+
+> `.pr_number` / `.fix_count` の削除は shell (`run-loop.sh` の `clean_processing_state`) がセッション終了後に行うため、AI 側では削除しない。
 
 ## 実装・コミット等の一般エラー
 
@@ -28,6 +29,7 @@
 
 いずれのエラーでも:
 - タスクファイルを `{tasksDir}/processing/` から `{tasksDir}/failed/` に移動する
-- `{tasksDir}/processing/.pr_number` と `.fix_count` が残っていれば削除する
 - `stopOnError` が `true` → ループ終了（`steps/summary.md` へ）
 - `stopOnError` が `false` → 次のタスクへ
+
+> `.pr_number` / `.fix_count` の削除は shell 側が行う。AI 側では削除しない。

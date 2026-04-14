@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TASKS_DIR="${TASKS_DIR:-tasks}"
 CONFIG_FILE="${CONFIG_FILE:-task-loop-config.json}"
 PR_NUMBER_FILE="${TASKS_DIR}/processing/.pr_number"
+FIX_COUNT_FILE="${TASKS_DIR}/processing/.fix_count"
 INSTRUCTIONS_FILE="${SCRIPT_DIR}/task-loop-instructions.md"
 SESSION_LOGS_DIR="${SESSION_LOGS_DIR:-session-logs}"
 
@@ -138,8 +139,8 @@ read_pr_number() {
   fi
 }
 
-clean_pr_number() {
-  rm -f "$PR_NUMBER_FILE"
+clean_processing_state() {
+  rm -f "$PR_NUMBER_FILE" "$FIX_COUNT_FILE"
 }
 
 # --- レビュー完了を無限ポーリング ---
@@ -372,7 +373,7 @@ while true; do
     echo "=== Phase: poll ==="
     if ! poll_review "$PR_NUMBER"; then
       echo "Error: レビューポーリングに失敗しました。次のタスクに進みます。"
-      clean_pr_number
+      clean_processing_state
       break
     fi
 
@@ -385,7 +386,7 @@ while true; do
     # タスクが processing/ から外れていればマージ完了 or failed に退避済み
     if ! has_processing_task; then
       echo "タスクが処理済みになりました。"
-      clean_pr_number
+      clean_processing_state
       break
     fi
     # まだ processing に残っている = 修正後の再レビュー待ち → ループ先頭へ

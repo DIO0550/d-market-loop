@@ -36,6 +36,7 @@ DEFAULT_ALLOWED_COMMANDS=(
   "git rebase"
   # gh
   "gh pr create"
+  "gh pr edit"
   "gh pr view"
   "gh pr merge"
   "gh pr list"
