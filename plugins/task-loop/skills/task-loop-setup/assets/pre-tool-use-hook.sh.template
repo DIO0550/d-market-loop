@@ -123,6 +123,86 @@ if [[ "$COMMAND" =~ \&\&|\|\||[;\|]|\$\(|['\`'] ]]; then
   deny "コマンドチェーンは許可されていません。以下の許可・禁止コマンドを確認してください。"
 fi
 
+# --- 1.5. gh pr merge のレビュー進行中ガード ---
+# references/copilot-in-progress-check.md の判定を hook でも独立に実行し、
+# Copilot がレビュー中 (reviewRequests に入っている / PENDING review / 直近コメント)
+# の PR を誤ってマージしないように物理的にブロックする。
+if [[ "$COMMAND" == "gh pr merge"* ]]; then
+  TASKS_DIR_HOOK="${TASKS_DIR:-tasks}"
+  PR_NUMBER_FILE_HOOK="${TASKS_DIR_HOOK}/processing/.pr_number"
+  CONFIG_FILE_HOOK="${CONFIG_FILE:-task-loop-config.json}"
+
+  if [ -f "$PR_NUMBER_FILE_HOOK" ]; then
+    MERGE_PR_NUM=$(cat "$PR_NUMBER_FILE_HOOK" 2>/dev/null || echo "")
+
+    if [ -n "$MERGE_PR_NUM" ]; then
+      # config から reviewer と window を読む
+      if [ -f "$CONFIG_FILE_HOOK" ]; then
+        MERGE_REVIEWER=$(jq -r '.reviewer // "copilot-pull-request-reviewer"' "$CONFIG_FILE_HOOK" 2>/dev/null)
+        MERGE_WINDOW=$(jq -r '.reviewInProgressWindowSeconds // 60' "$CONFIG_FILE_HOOK" 2>/dev/null)
+      else
+        MERGE_REVIEWER="copilot-pull-request-reviewer"
+        MERGE_WINDOW="60"
+      fi
+
+      MERGE_OWNER_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
+      if [ -n "$MERGE_OWNER_REPO" ]; then
+        MERGE_OWNER=${MERGE_OWNER_REPO%/*}
+        MERGE_REPO=${MERGE_OWNER_REPO#*/}
+
+        MERGE_STATUS=$(gh api graphql \
+          -f owner="$MERGE_OWNER" -f repo="$MERGE_REPO" -F number="$MERGE_PR_NUM" \
+          -f reviewer="$MERGE_REVIEWER" -F window="$MERGE_WINDOW" \
+          -f query='
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewRequests(first: 100) {
+                    nodes {
+                      requestedReviewer {
+                        __typename
+                        ... on User { login }
+                        ... on Bot { login }
+                      }
+                    }
+                  }
+                  reviews(first: 100) {
+                    nodes { author { login } state }
+                  }
+                  reviewThreads(first: 100) {
+                    nodes {
+                      comments(first: 100) {
+                        nodes { createdAt }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ' \
+          --jq '
+            ([.data.repository.pullRequest.reviewRequests.nodes[]
+              | .requestedReviewer
+              | select(. != null and (.login? // "") == $reviewer)] | length) as $requested
+            | ([.data.repository.pullRequest.reviews.nodes[]
+                | select(.author.login == $reviewer and .state == "PENDING")] | length) as $pending
+            | ([.data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].createdAt
+                | fromdateiso8601] | max // 0) as $latest
+            | ($window | tonumber) as $w
+            | if $requested > 0 then "REQUESTED"
+              elif $pending > 0 then "PENDING"
+              elif ($latest > 0 and (now - $latest) < $w) then "RECENT_COMMENT"
+              else "" end
+          ' 2>/dev/null || echo "")
+
+        if [ -n "$MERGE_STATUS" ]; then
+          deny "${MERGE_REVIEWER} がレビュー中のため merge 不可（status: ${MERGE_STATUS}）。fix 直後の同一セッションや Copilot の追加コメント投稿中は merge できません。"
+        fi
+      fi
+    fi
+  fi
+fi
+
 # --- 2. 禁止コマンドの前方一致チェック ---
 for denied_cmd in "${DENIED_COMMANDS[@]}"; do
   if [[ "$COMMAND" == "$denied_cmd" || "$COMMAND" == "$denied_cmd "* ]]; then

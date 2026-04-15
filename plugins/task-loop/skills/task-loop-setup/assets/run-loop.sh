@@ -30,12 +30,6 @@ read_config() {
 REVIEW_POLL_INTERVAL=$(read_config "reviewPollIntervalSeconds" "30")
 REVIEWER=$(read_config "reviewer" "copilot-pull-request-reviewer")
 SESSION_LOGS_DIR=$(read_config "sessionLogsDir" "$SESSION_LOGS_DIR")
-REVIEW_STABILIZE_INTERVAL=$(read_config "reviewStabilizeIntervalSeconds" "15")
-REVIEW_STABILIZE_MAX=$(read_config "reviewStabilizeMaxSeconds" "300")
-REVIEW_IN_PROGRESS_WINDOW=$(read_config "reviewInProgressWindowSeconds" "30")
-
-# リポジトリ情報（安定化判定の GraphQL クエリで使用）
-OWNER_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
 
 # --- セッションログ ---
 mkdir -p "$SESSION_LOGS_DIR"
@@ -184,116 +178,6 @@ poll_review() {
   done
 }
 
-# --- レビューが進行中かを判定する ---
-# 以下のいずれかに該当すれば "進行中" とみなす:
-#   1. REVIEWER が reviewRequests (pending reviewers) に入っている
-#      → 再レビュー依頼後、まだレビューが返ってきていない状態。Copilot の
-#        "started reviewing" 状態をここで捉える
-#   2. REVIEWER の review に state=PENDING のものが存在する
-#      （bot の draft review は API で見えないので実質的に human reviewer 用）
-#   3. reviewThreads の任意のコメントの createdAt が REVIEW_IN_PROGRESS_WINDOW 秒以内
-#      → 追加コメントを順次投稿している最中の race condition 対策
-#
-# stdout に判定結果を返す:
-#   "REQUESTED"      - REVIEWER が pending reviewers にいる
-#   "PENDING"        - REVIEWER に PENDING review あり
-#   "RECENT_COMMENT" - 直近にコメント追加あり
-#   ""               - 進行中でない（安定）
-check_review_in_progress() {
-  local pr_number="$1"
-  local owner=${OWNER_REPO%/*}
-  local repo=${OWNER_REPO#*/}
-
-  gh api graphql \
-    -f owner="$owner" -f repo="$repo" -F number="$pr_number" \
-    -F reviewer="$REVIEWER" -F window="$REVIEW_IN_PROGRESS_WINDOW" \
-    -f query='
-      query($owner: String!, $repo: String!, $number: Int!) {
-        repository(owner: $owner, name: $repo) {
-          pullRequest(number: $number) {
-            reviewRequests(first: 100) {
-              nodes {
-                requestedReviewer {
-                  __typename
-                  ... on User { login }
-                  ... on Bot { login }
-                }
-              }
-            }
-            reviews(first: 100) {
-              nodes { author { login } state }
-            }
-            reviewThreads(first: 100) {
-              nodes {
-                comments(first: 100) {
-                  nodes { createdAt }
-                }
-              }
-            }
-          }
-        }
-      }
-    ' \
-    --jq '
-      ([.data.repository.pullRequest.reviewRequests.nodes[]
-        | .requestedReviewer
-        | select(. != null and (.login? // "") == $reviewer)] | length) as $requested
-      | ([.data.repository.pullRequest.reviews.nodes[]
-          | select(.author.login == $reviewer and .state == "PENDING")] | length) as $pending
-      | ([.data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].createdAt
-          | fromdateiso8601] | max // 0) as $latest
-      | ($window | tonumber) as $w
-      | if $requested > 0 then "REQUESTED"
-        elif $pending > 0 then "PENDING"
-        elif ($latest > 0 and (now - $latest) < $w) then "RECENT_COMMENT"
-        else "" end
-    ' 2>/dev/null || echo ""
-}
-
-# --- レビューが安定するまで待つ ---
-# check_review_in_progress が空文字（進行中でない）を返すまでポーリングする。
-# 「まだ指摘が出揃っていないのにマージしてしまう」race condition を防ぐ。
-#
-# 引数:
-#   $1 - PR番号
-wait_for_review_stable() {
-  local pr_number="$1"
-
-  if [ -z "$OWNER_REPO" ]; then
-    echo "  OWNER_REPO を取得できないため安定化待ちをスキップします" >&2
-    return
-  fi
-
-  local elapsed=0
-  echo "  レビュー進行中チェック開始（間隔: ${REVIEW_STABILIZE_INTERVAL}秒、進行中窓: ${REVIEW_IN_PROGRESS_WINDOW}秒、上限: ${REVIEW_STABILIZE_MAX}秒）" >&2
-
-  while [ "$elapsed" -lt "$REVIEW_STABILIZE_MAX" ]; do
-    local status
-    status=$(check_review_in_progress "$pr_number")
-
-    case "$status" in
-      "")
-        echo "  レビューは安定しています（経過: ${elapsed}秒）" >&2
-        return
-        ;;
-      REQUESTED)
-        echo "  ${REVIEWER} が pending reviewers にいます（まだレビューを返していない）（${elapsed}/${REVIEW_STABILIZE_MAX}秒）" >&2
-        ;;
-      PENDING)
-        echo "  ${REVIEWER} の review が PENDING 状態（${elapsed}/${REVIEW_STABILIZE_MAX}秒）" >&2
-        ;;
-      RECENT_COMMENT)
-        echo "  直近${REVIEW_IN_PROGRESS_WINDOW}秒以内に新しいコメントあり（${elapsed}/${REVIEW_STABILIZE_MAX}秒）" >&2
-        ;;
-    esac
-
-    sleep "$REVIEW_STABILIZE_INTERVAL"
-    elapsed=$((elapsed + REVIEW_STABILIZE_INTERVAL))
-  done
-
-  echo "  安定化待機が上限(${REVIEW_STABILIZE_MAX}秒)に達しました。現状で AI に引き継ぎます。" >&2
-}
-
 PROMPT_BASE="$(cat "$INSTRUCTIONS_FILE")"
 
 # --- デフォルト許可コマンド（pre-tool-use-hook.sh.template と同じ） ---
@@ -399,9 +283,6 @@ while true; do
       break
     fi
 
-    # レビュー検出後、Copilot が inline コメントを追加投稿し終えるのを待つ
-    wait_for_review_stable "$PR_NUMBER"
-
     echo "=== Phase: review-check ==="
     run_ai
 
@@ -411,6 +292,11 @@ while true; do
       clean_processing_state
       break
     fi
-    # まだ processing に残っている = 修正後の再レビュー待ち → ループ先頭へ
+
+    # まだ processing に残っている = 修正後の再レビュー待ち、または AI が
+    # 「レビュー進行中」と判定して終了した状態。tight loop を避けるため
+    # backoff してから次の poll に進む
+    echo "  processing に残存。${REVIEW_POLL_INTERVAL}秒待機してから再チェック..."
+    sleep "$REVIEW_POLL_INTERVAL"
   done
 done

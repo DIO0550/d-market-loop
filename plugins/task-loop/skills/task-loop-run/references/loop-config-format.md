@@ -18,9 +18,7 @@
   "mergeStrategy": "squash",
   "deleteBranchAfterMerge": true,
   "reviewPollIntervalSeconds": 30,
-  "reviewStabilizeIntervalSeconds": 15,
-  "reviewStabilizeMaxSeconds": 300,
-  "reviewInProgressWindowSeconds": 30,
+  "reviewInProgressWindowSeconds": 60,
   "maxFixIterations": 3,
   "prBodyFooter": "Automated by task-loop-run",
   "sessionLogsDir": "session-logs",
@@ -42,12 +40,10 @@
 | `reviewer` | string | `"copilot-pull-request-reviewer"` | PRのレビュアー。`"copilot-pull-request-reviewer"` でGitHub Copilotを指定 |
 | `mergeStrategy` | string | `"squash"` | マージ戦略: `"squash"`, `"merge"`, `"rebase"` |
 | `deleteBranchAfterMerge` | boolean | `true` | マージ後にブランチを削除するか |
-| `reviewPollIntervalSeconds` | number | `30` | レビュー結果のポーリング間隔（秒）。shell は無限にポーリングする（タイムアウト無し） |
-| `reviewStabilizeIntervalSeconds` | number | `15` | レビュー進行中判定のポーリング間隔（秒） |
-| `reviewStabilizeMaxSeconds` | number | `300` | 安定化待ちの上限（秒）。上限に達した場合は現状のまま AI に引き継ぐ |
-| `reviewInProgressWindowSeconds` | number | `30` | 直近この秒数以内に reviewThread コメントが追加されていたら「進行中」とみなす。Copilot の追加投稿による race condition を防ぐ |
+| `reviewPollIntervalSeconds` | number | `30` | レビュー結果のポーリング間隔（秒）。無限にポーリングする（タイムアウト無し） |
+| `reviewInProgressWindowSeconds` | number | `60` | 直近この秒数以内に reviewThread コメントが追加されていたら「進行中」とみなす。Copilot の追加投稿による race condition を防ぐ。`steps/review-check.md` および `pre-tool-use-hook` が参照する |
 | `maxFixIterations` | number | `3` | レビュー指摘修正の最大回数。超えると `steps/review-check.md` が best-effort マージ → failed 記録フローに入る。`0` = fix せず即フォールバック、`-1` = 無制限（解決するまで fix し続ける） |
 | `prBodyFooter` | string | `"Automated by task-loop-run"` | PR本文のフッター |
 | `sessionLogsDir` | string | `"session-logs"` | セッションログの出力ディレクトリ（リポジトリルートからの相対パス） |
-| `allowedCommands` | string[] | `[]` | プロジェクト固有の追加許可コマンド。git/gh/tsc/eslint/pnpm 基本コマンド等は run-loop.sh のデフォルトで許可済みのため、ここには追加で必要なものだけ記載する。詳細は `task-loop-setup/references/allowed-commands.md` を参照 |
+| `allowedCommands` | string[] | `[]` | プロジェクト固有の追加許可コマンド。git/gh/tsc/eslint/pnpm 基本コマンド等はデフォルトで許可済みのため、ここには追加で必要なものだけ記載する。詳細は `task-loop-setup/references/allowed-commands.md` を参照 |
 

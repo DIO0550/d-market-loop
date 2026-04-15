@@ -1,10 +1,11 @@
-# レビュー結果の判定（fix / merge / 上限到達時の best-effort マージ）
+# レビュー結果の判定（fix / merge / 進行中 / 上限到達時の best-effort マージ）
 
 `processing/.pr_number` が存在する状態で呼び出された場合、本ステップで分岐を決定する。
 
-> **前提**: 「レビューがまだ進行中か」の判定は外部ループ（`run-loop.sh` の
-> `wait_for_review_stable`）が完了させている。本ステップでは進行中チェックは
-> **行わない**。ファイル状態と未解決スレッドだけを見て判断する。
+> **前提**: レビュー進行中の判定は本ステップで行う。Copilot が再レビュー依頼中や
+> 追加コメント投稿中の PR に対して `reviewThreads.isResolved` を信じて fix / merge
+> してはならない。進行中の判定条件と GraphQL クエリは
+> `references/copilot-in-progress-check.md` を参照。
 
 ## 手順
 
@@ -13,6 +14,9 @@
 - PR番号: `{tasksDir}/processing/.pr_number` から読み込む（`{tasksDir}` は `task-loop-config.json` の `tasksDir`、デフォルト `tasks`）
 - 修正回数: `{tasksDir}/processing/.fix_count` から読み込む（ファイル無しなら 0）
 - 上限: `task-loop-config.json` の `maxFixIterations`（デフォルト 3）
+- レビュアー: `task-loop-config.json` の `reviewer`（デフォルト `copilot-pull-request-reviewer`）
+- 進行中窓: `task-loop-config.json` の `reviewInProgressWindowSeconds`（デフォルト 60）
+- owner / repo: `git remote get-url origin` から取得
 
 ### Step 1: 上限判定（fix_count >= maxFixIterations）
 
@@ -28,35 +32,79 @@
 
 上限未満なら Step 2 へ。
 
-### Step 2: 未解決のレビュースレッドを取得
+### Step 2: PR の状態をワンショット取得
+
+`references/copilot-in-progress-check.md` の GraphQL クエリを 1 回だけ実行し、以下を
+同時に取得する:
+
+- `reviewRequests.nodes[].requestedReviewer` — 誰が pending reviewers か
+- `reviews.nodes[]` — 各 review の `author.login` と `state`
+- `reviewThreads.nodes[]` — 各スレッドの `isResolved` と `comments[].createdAt` / `body` / `path` / `line` / `author.login`
+
+クエリ例:
 
 ```bash
-gh api graphql -f query='
-  query($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $number) {
-        reviewThreads(first: 100) {
-          nodes {
-            id
-            isResolved
-            comments(first: 10) {
-              nodes { body path line author { login } }
+gh api graphql \
+  -f owner='{owner}' -f repo='{repo}' -F number={PR番号} \
+  -f reviewer='{reviewer}' -F window={reviewInProgressWindowSeconds} \
+  -f query='
+    query($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) {
+          reviewRequests(first: 100) {
+            nodes {
+              requestedReviewer {
+                __typename
+                ... on User { login }
+                ... on Bot { login }
+              }
+            }
+          }
+          reviews(first: 100) {
+            nodes { author { login } state }
+          }
+          reviewThreads(first: 100) {
+            nodes {
+              id
+              isResolved
+              comments(first: 10) {
+                nodes { body path line author { login } createdAt }
+              }
             }
           }
         }
       }
     }
-  }
-' -f owner='{owner}' -f repo='{repo}' -F number={PR番号}
+  '
 ```
-※ `{owner}` と `{repo}` は `git remote get-url origin` から取得
 
-### Step 3: `isResolved: false` のスレッドの有無で分岐
+### Step 3-A: レビュー進行中判定（最優先）
+
+`references/copilot-in-progress-check.md` の判定ロジックに従って進行中判定する:
+
+- `reviewRequests` に `reviewer` が含まれている → `REQUESTED`
+- `reviewer` による `state=PENDING` の review がある → `PENDING`
+- `reviewThreads.nodes[].comments[].createdAt` の最大値が `now - reviewInProgressWindowSeconds` 秒以内 → `RECENT_COMMENT`
+
+上記いずれかにヒットしたら **何もせずセッションを終了する**:
+
+- `processing/` のタスクファイルはそのまま残す
+- `.fix_count` は触らない
+- `.pr_number` も削除しない
+- `steps/fix.md` にも `steps/merge.md` にも進まない
+
+理由: Copilot のレビューが完全には届いていない状態で `isResolved: false` の有無を
+見ても、新しい未解決コメントを見逃して merge に進んでしまう可能性があるため。
+次回の呼び出しで再度 Step 2 から状態を観測する。
+
+### Step 3-B: `isResolved: false` のスレッドの有無で分岐
+
+Step 3-A で進行中でないと判定された場合のみ本ステップに進む。
 
 **分岐は一方通行。fix ルートに入ったら merge ルートには絶対に戻らない。**
 
 - **未解決スレッドなし** → `steps/merge.md` → `steps/update-state.md` → **終了**
 - **未解決スレッドあり** → `steps/fix.md` の**全手順**を実行 → **終了**
   - 修正 → コミット・プッシュ → スレッド解決 → 再レビュー依頼 → `.fix_count` インクリメント まで**必ず全て実施**する
-  - 再レビュー依頼（`gh pr edit --add-reviewer`）を省略すると外部ループが次のレビューを永久に待ち続ける
-  - ⚠️ **fix.md 完了後に `reviewThreads` を再取得して merge に進んではならない。** Step 4 で自分で resolved にしているため「未解決なし」に見えるが、Copilot の新しいレビューはまだ届いていない。次の review-check は別セッションで起動される
+  - 再レビュー依頼（`gh pr edit --add-reviewer`）を省略すると次回呼び出し時も `reviewRequests` が空のまま新しいレビューが走らない
+  - ⚠️ **fix.md 完了後に `reviewThreads` を再取得して merge に進んではならない。** Step 4 で自分で resolved にしているため「未解決なし」に見えるが、push により HEAD が変わっており、Copilot の新しいレビューはまだ届いていない。次の review-check は次回呼び出し時に起動する

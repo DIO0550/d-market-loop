@@ -15,7 +15,7 @@
 3. 状態更新のコミット（`steps/update-state.md` と同等の処理）を push する
 4. **`stopOnError` の値に関わらず、このセッションは正常終了する**（次のタスクに進める必要があるため）
 
-> `.pr_number` / `.fix_count` の削除は shell (`run-loop.sh` の `clean_processing_state`) がセッション終了後に行うため、AI 側では削除しない。
+> `.pr_number` / `.fix_count` の削除はタスク終了後に自動で行われるため、AI 側では削除しない。
 
 ## 実装・コミット等の一般エラー
 
@@ -32,4 +32,4 @@
 - `stopOnError` が `true` → ループ終了（`steps/summary.md` へ）
 - `stopOnError` が `false` → 次のタスクへ
 
-> `.pr_number` / `.fix_count` の削除は shell 側が行う。AI 側では削除しない。
+> `.pr_number` / `.fix_count` の削除はタスク終了後に自動で行われる。AI 側では削除しない。

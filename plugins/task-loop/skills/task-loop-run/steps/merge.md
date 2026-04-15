@@ -1,5 +1,10 @@
 # マージ
 
+> 本ステップは `steps/review-check.md` の Step 3-B で「進行中でない & 未解決なし」と
+> 判定された場合にだけ呼ばれる。仮にそれ以外の状況で `gh pr merge` を呼んでも、
+> `pre-tool-use-hook` が `reviewRequests` / PENDING / 直近コメント窓を再検証して
+> 進行中なら deny する（`references/copilot-in-progress-check.md` 参照）。
+
 1. PRをマージする:
    ```bash
    gh pr merge {PR番号} --{mergeStrategy} --delete-branch

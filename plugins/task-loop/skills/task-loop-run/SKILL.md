@@ -9,15 +9,16 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 
 ## 呼び出しモデル
 
-外部ループ（`run-loop.sh`）は AI に **モードや状態を一切渡さない**。AI は毎回このスキルの指示に従い、`{tasksDir}/` の現在の状態から次に何をすべきか自己判定する。shell はタスクディレクトリの監視とレビューのポーリング待ちだけを行う。
+このスキルは **毎回の呼び出しで 1 つだけ行動する**。毎回このスキルの指示に従い、`{tasksDir}/` 配下のファイル状態と GitHub 上の PR 状態（GraphQL）の「いま観測できる事実」だけから次に何をすべきか自己判定する。
 
 状態ソース:
 - **タスク配置**: `{tasksDir}/todo/` / `{tasksDir}/processing/` / `{tasksDir}/done/` / `{tasksDir}/failed/`
 - **PR番号**: `{tasksDir}/processing/.pr_number`（`steps/pr.md` が書き出す）
 - **修正回数**: `{tasksDir}/processing/.fix_count`（`steps/fix.md` がインクリメントする）
 - **設定**: `task-loop-config.json`
+- **PR の GraphQL 状態**: `gh api graphql` で取得する `reviewThreads` / `reviewRequests` / `reviews`
 
-> レビューのポーリング待ち・「レビュー進行中」判定はシェル側が担当する。AIセッション内で `sleep` によるポーリングや進行中チェックを行ってはならない。
+> `sleep` による能動的ポーリングは禁止。行動できる状態でない（例: レビュー進行中）ときは何もせずセッションを終了する。次回の呼び出し時に改めて状態を観測する。
 
 ## 自己判定フロー
 
@@ -31,11 +32,12 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
    - `references/state-management.md` の中断復帰手順に従って適切なステップから再開
    - → **終了**
 
-3. **`processing/` にタスクあり、`.pr_number` あり** → レビュー結果判定フローへ。`steps/review-check.md` に従い、以下の **3a / 3b / 3c のいずれか一つだけ** を実行して即終了する:
+3. **`processing/` にタスクあり、`.pr_number` あり** → レビュー結果判定フローへ。`steps/review-check.md` に従い、以下の **3a / 3b / 3c / 3d のいずれか一つだけ** を実行して即終了する:
 
    - **3a**: `.fix_count >= maxFixIterations` → 「best-effort マージ + failed 記録」フロー（`steps/error-recovery.md` の `fix_limit_exceeded` セクション） → **終了**
-   - **3b**: 未解決スレッドあり → `steps/fix.md` の全手順（`.fix_count` インクリメントまで）→ **このセッションは即終了**。⚠️ fix.md 完了後に reviewThreads を再取得したり `steps/merge.md` に進んではならない。次の Copilot レビューは shell が poll で拾い、別セッションで起動される
-   - **3c**: 未解決スレッドなし → `steps/merge.md` → `steps/update-state.md` → **終了**
+   - **3b**: レビュー進行中（`references/copilot-in-progress-check.md` の条件にヒット）→ **何もせず即終了**。`processing/` を残したまま、`.fix_count` も触らない
+   - **3c**: レビュー安定・未解決スレッドあり → `steps/fix.md` の全手順（`.fix_count` インクリメントまで）→ **このセッションは即終了**。⚠️ fix.md 完了後に `reviewThreads` を再取得したり `steps/merge.md` に進んではならない。push により HEAD が変わっており、新しいレビューが届くのは次回呼び出し時
+   - **3d**: レビュー安定・未解決スレッドなし → `steps/merge.md` → `steps/update-state.md` → **終了**
 
 ### ステップファイル一覧
 
@@ -46,7 +48,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 | `steps/self-review.md` | セルフレビュー（サブエージェントによる事前レビュー） |
 | `steps/commit.md` | コミット（ステージング、メッセージ作成） |
 | `steps/pr.md` | PR作成（プッシュ、PR本文生成、レビュアー設定） |
-| `steps/review-wait.md` | レビュー待ち（外部ループが担当） |
+| `steps/review-wait.md` | レビュー待ち（AI セッションを終了するだけ） |
 | `steps/review-check.md` | レビュー結果の判定（fix/merge 分岐） |
 | `steps/fix.md` | レビュー指摘修正 |
 | `steps/merge.md` | PRマージ |
@@ -57,8 +59,8 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 | `steps/session-export.md` | セッションレポートのMarkdown書き出し |
 
 > **補足**: Copilot は `reviewDecision`（APPROVED / CHANGES_REQUESTED）を設定しない。
-> レビューが提出されたかどうか（`latestReviews` の数の変化）を shell が検知し、
-> コメント内容の分析（指摘の有無判断）は `review-check` モードで AI が行う。
+> レビューが進行中かどうかの判定は `references/copilot-in-progress-check.md`、
+> 未解決コメントの有無判断は `steps/review-check.md` で行う。
 
 ## 前提条件
 

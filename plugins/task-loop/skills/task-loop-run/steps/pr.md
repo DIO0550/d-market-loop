@@ -19,4 +19,4 @@
    ```
 5. PR番号とURLを記録する
 6. タスクファイルのfrontmatterに `prUrl` と `prNumber` を設定
-7. PR番号を `{tasksDir}/processing/.pr_number` に書き出す（外部ループがPR番号を参照するため）
+7. PR番号を `{tasksDir}/processing/.pr_number` に書き出す（次回呼び出し時の `steps/review-check.md` が参照する）
