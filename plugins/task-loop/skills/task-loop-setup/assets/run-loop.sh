@@ -137,8 +137,10 @@ clean_processing_state() {
   rm -f "$PR_NUMBER_FILE" "$FIX_COUNT_FILE"
 }
 
-# --- レビュー完了を無限ポーリング ---
-# PR の HEAD コミット SHA に対して REVIEWER のレビューが届くまで無限に待つ。
+# --- レビュー完了または CI 失敗を無限ポーリング ---
+# PR の HEAD コミット SHA に対して以下のいずれかが成立するまで無限に待つ:
+#   - REVIEWER のレビューが届いた（既存）
+#   - CI チェックが失敗状態に到達した（CI 未設定の場合はこの条件は無視される）
 # タイムアウトは設けない: 本当に返ってこない場合は人間が Ctrl+C で介入する想定。
 #
 # 引数:
@@ -159,9 +161,10 @@ poll_review() {
     return 1
   fi
 
-  echo "PR #${pr_number} のレビュー待ち開始（レビュアー: ${REVIEWER}、HEAD: ${head_sha:0:8}、間隔: ${REVIEW_POLL_INTERVAL}秒）" >&2
+  echo "PR #${pr_number} のレビュー・CI 待ち開始（レビュアー: ${REVIEWER}、HEAD: ${head_sha:0:8}、間隔: ${REVIEW_POLL_INTERVAL}秒）" >&2
 
   while true; do
+    # --- レビュー到着チェック ---
     # gh pr view (GraphQL) の author.login は "[bot]" サフィックスなしで REVIEWER 設定値と一致する
     # （REST API の user.login は "copilot-pull-request-reviewer[bot]" でサフィックスが付くので使えない）
     local review_state
@@ -173,7 +176,23 @@ poll_review() {
       return 0
     fi
 
-    echo "  レビュー待機中... ${REVIEWER} が HEAD ${head_sha:0:8} をレビュー中" >&2
+    # --- CI 失敗チェック（チェックが存在する場合のみ） ---
+    local ci_checks_count
+    ci_checks_count=$(gh pr checks "$pr_number" --json name \
+      --jq 'length' 2>/dev/null || echo "0")
+
+    if [ "$ci_checks_count" -gt 0 ]; then
+      local ci_failures
+      ci_failures=$(gh pr checks "$pr_number" --json conclusion \
+        --jq '[.[] | select(.conclusion == "failure" or .conclusion == "startup_failure")] | length' 2>/dev/null || echo "0")
+
+      if [ "$ci_failures" -gt 0 ]; then
+        echo "HEAD ${head_sha:0:8} 上の CI 失敗を検出（${ci_failures} 件）" >&2
+        return 0
+      fi
+    fi
+
+    echo "  待機中... レビュー: 未着、CI: チェック中" >&2
     sleep "$REVIEW_POLL_INTERVAL"
   done
 }
@@ -185,7 +204,7 @@ DEFAULT_ALLOWED_COMMANDS=(
   "git status" "git add" "git commit" "git push" "git pull" "git fetch"
   "git checkout" "git switch" "git branch" "git diff" "git log"
   "git stash" "git merge" "git rebase"
-  "gh pr create" "gh pr edit" "gh pr view" "gh pr merge" "gh pr list" "gh api" "gh auth status"
+  "gh pr create" "gh pr edit" "gh pr view" "gh pr merge" "gh pr list" "gh pr checks" "gh api" "gh auth status"
   "ls" "cat" "wc" "which" "command -v"
   "mkdir -p" "cp" "mv"
   "tsc --noEmit" "tsc -p" "eslint" "prettier --check" "vitest" "jest"

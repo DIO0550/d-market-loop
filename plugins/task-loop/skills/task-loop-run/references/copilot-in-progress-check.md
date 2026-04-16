@@ -47,6 +47,22 @@ gh api graphql \
               }
             }
           }
+          commits(last: 1) {
+            nodes {
+              commit {
+                statusCheckRollup {
+                  state
+                  contexts(first: 100) {
+                    nodes {
+                      __typename
+                      ... on CheckRun { name status conclusion detailsUrl }
+                      ... on StatusContext { context state targetUrl }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -72,7 +88,20 @@ gh api graphql \
 
 空文字 `""` が返れば「安定」、それ以外（`REQUESTED` / `PENDING` / `RECENT_COMMENT`）は「進行中」。
 
+## CI ステータスの解釈
+
+同じクエリで取得できる `statusCheckRollup` から CI の状態を判定する:
+
+- `statusCheckRollup` が `null` → CI 未設定。CI チェックをスキップする（通過扱い）
+- `statusCheckRollup.state`:
+  - `SUCCESS` → 全チェック通過
+  - `PENDING` / `EXPECTED` → チェック実行中
+  - `FAILURE` / `ERROR` → チェック失敗
+
+失敗したチェックの詳細は `statusCheckRollup.contexts.nodes[]` で確認できる。`CheckRun` の `conclusion` が `FAILURE` のものが失敗チェック。
+
 ## 使用時の注意
 
 - 本チェックは 1 ショット。結果が「進行中」ならセッションを終了し、次回の呼び出しで再チェックする
 - `reviewThreads` の `isResolved` フィールドもこのクエリで同時に取れるので、進行中でなかった場合は追加クエリ無しで `isResolved: false` の有無判定に進める
+- `statusCheckRollup` も同じクエリで取れるので、CI 状態の判定にも追加クエリは不要

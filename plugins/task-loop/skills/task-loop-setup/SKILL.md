@@ -55,6 +55,7 @@ task-loop-run スキルを使うための初期セットアップを行う。ユ
   "reviewPollIntervalSeconds": 30,
   "reviewInProgressWindowSeconds": 60,
   "maxFixIterations": 3,
+  "ciAutoFix": true,
   "prBodyFooter": "Automated by task-loop-run",
   "sessionLogsDir": "session-logs",
   "allowedCommands": []

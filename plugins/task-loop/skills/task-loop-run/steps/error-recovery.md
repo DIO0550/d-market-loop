@@ -17,6 +17,22 @@
 
 > `.pr_number` / `.fix_count` の削除はタスク終了後に自動で行われるため、AI 側では削除しない。
 
+## `ci_auto_fix_disabled` — CI自動修正無効時の CI 失敗
+
+`steps/review-check.md` の Step 3-B で CI 失敗を検知し、`ciAutoFix` が `false` のときに入る処理。`fix_limit_exceeded` と同様のフロー。
+
+1. **PR のマージを試みる**（`steps/merge.md` の手順）
+   - CI 必須のブランチ保護が設定されている場合、マージは失敗する可能性がある
+   - mergeable なら `gh pr merge` で即マージする
+   - 失敗した場合はリベース → 再マージを試みる
+2. マージ結果にかかわらずタスクを `{tasksDir}/failed/` に移動し、frontmatter に以下を記録する:
+   - `error: "ci_failed"`
+   - `merged: true | false`（マージ成否）
+3. 状態更新のコミット（`steps/update-state.md` と同等の処理）を push する
+4. **`stopOnError` の値に関わらず、このセッションは正常終了する**（次のタスクに進める必要があるため）
+
+> `.pr_number` / `.fix_count` の削除はタスク終了後に自動で行われるため、AI 側では削除しない。
+
 ## 実装・コミット等の一般エラー
 
 | エラー | 対処 |

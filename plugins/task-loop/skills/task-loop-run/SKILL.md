@@ -16,7 +16,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 - **PR番号**: `{tasksDir}/processing/.pr_number`（`steps/pr.md` が書き出す）
 - **修正回数**: `{tasksDir}/processing/.fix_count`（`steps/fix.md` がインクリメントする）
 - **設定**: `task-loop-config.json`
-- **PR の GraphQL 状態**: `gh api graphql` で取得する `reviewThreads` / `reviewRequests` / `reviews`
+- **PR の GraphQL 状態**: `gh api graphql` で取得する `reviewThreads` / `reviewRequests` / `reviews` / `statusCheckRollup`
 
 > `sleep` による能動的ポーリングは禁止。行動できる状態でない（例: レビュー進行中）ときは何もせずセッションを終了する。次回の呼び出し時に改めて状態を観測する。
 
@@ -32,12 +32,14 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
    - `references/state-management.md` の中断復帰手順に従って適切なステップから再開
    - → **終了**
 
-3. **`processing/` にタスクあり、`.pr_number` あり** → レビュー結果判定フローへ。`steps/review-check.md` に従い、以下の **3a / 3b / 3c / 3d のいずれか一つだけ** を実行して即終了する:
+3. **`processing/` にタスクあり、`.pr_number` あり** → レビュー・CI 判定フローへ。`steps/review-check.md` に従い、以下の **3a 〜 3f のいずれか一つだけ** を実行して即終了する:
 
    - **3a**: `.fix_count >= maxFixIterations` → 「best-effort マージ + failed 記録」フロー（`steps/error-recovery.md` の `fix_limit_exceeded` セクション） → **終了**
    - **3b**: レビュー進行中（`references/copilot-in-progress-check.md` の条件にヒット）→ **何もせず即終了**。`processing/` を残したまま、`.fix_count` も触らない
-   - **3c**: レビュー安定・未解決スレッドあり → `steps/fix.md` の全手順（`.fix_count` インクリメントまで）→ **このセッションは即終了**。⚠️ fix.md 完了後に `reviewThreads` を再取得したり `steps/merge.md` に進んではならない。push により HEAD が変わっており、新しいレビューが届くのは次回呼び出し時
-   - **3d**: レビュー安定・未解決スレッドなし → `steps/merge.md` → `steps/update-state.md` → **終了**
+   - **3c**: CI 実行中（`statusCheckRollup.state` が `PENDING` / `EXPECTED`）→ **何もせず即終了**。CI 未設定（`statusCheckRollup` が `null`）の場合はスキップして 3e/3f へ
+   - **3d**: CI 失敗（`statusCheckRollup.state` が `FAILURE` / `ERROR`）→ `ciAutoFix` が `true` なら `steps/ci-fix.md`、`false` なら `steps/error-recovery.md` の `ci_auto_fix_disabled` → **終了**
+   - **3e**: レビュー安定・CI 通過（または CI 未設定）・未解決スレッドあり → `steps/fix.md` の全手順（`.fix_count` インクリメントまで）→ **このセッションは即終了**。⚠️ fix.md 完了後に `reviewThreads` を再取得したり `steps/merge.md` に進んではならない。push により HEAD が変わっており、新しいレビューが届くのは次回呼び出し時
+   - **3f**: レビュー安定・CI 通過（または CI 未設定）・未解決スレッドなし → `steps/merge.md` → `steps/update-state.md` → **終了**
 
 ### ステップファイル一覧
 
@@ -51,6 +53,7 @@ description: タスクフォルダからタスクを1つずつ取り出し、実
 | `steps/review-wait.md` | レビュー待ち（AI セッションを終了するだけ） |
 | `steps/review-check.md` | レビュー結果の判定（fix/merge 分岐） |
 | `steps/fix.md` | レビュー指摘修正 |
+| `steps/ci-fix.md` | CI 失敗修正 |
 | `steps/merge.md` | PRマージ |
 | `steps/update-state.md` | 状態更新（タスク完了記録） |
 | `steps/loop-check.md` | ループ条件チェック |

@@ -22,7 +22,7 @@ todo/ ──→ processing/ ──→ done/
 | タイミング | フォルダ移動 | タスクファイル frontmatter |
 |-----------|-------------|--------------------------|
 | タスク開始 | `todo/` → `processing/` | `assignedAt` 設定、`branch` 設定 |
-| PR作成 | — | `prUrl`、`prNumber` 設定。`processing/.pr_number` にPR番号を書き出す |
+| PR作成 | — | `prUrl`、`prNumber` 設定。`processing/.pr_number` にPR番号を書き出す。CI チェックがあればこの時点で CI が走り始める |
 | タスク完了 | `processing/` → `done/` | `completedAt` 設定 |
 | タスク失敗 | `processing/` → `failed/` | — |
 

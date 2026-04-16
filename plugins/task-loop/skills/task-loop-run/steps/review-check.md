@@ -1,4 +1,4 @@
-# レビュー結果の判定（fix / merge / 進行中 / 上限到達時の best-effort マージ）
+# レビュー結果の判定（fix / merge / 進行中 / CI 失敗 / 上限到達時の best-effort マージ）
 
 `processing/.pr_number` が存在する状態で呼び出された場合、本ステップで分岐を決定する。
 
@@ -14,6 +14,7 @@
 - PR番号: `{tasksDir}/processing/.pr_number` から読み込む（`{tasksDir}` は `task-loop-config.json` の `tasksDir`、デフォルト `tasks`）
 - 修正回数: `{tasksDir}/processing/.fix_count` から読み込む（ファイル無しなら 0）
 - 上限: `task-loop-config.json` の `maxFixIterations`（デフォルト 3）
+- CI自動修正: `task-loop-config.json` の `ciAutoFix`（デフォルト `true`）
 - レビュアー: `task-loop-config.json` の `reviewer`（デフォルト `copilot-pull-request-reviewer`）
 - 進行中窓: `task-loop-config.json` の `reviewInProgressWindowSeconds`（デフォルト 60）
 - owner / repo: `git remote get-url origin` から取得
@@ -41,7 +42,7 @@
 - `reviews.nodes[]` — 各 review の `author.login` と `state`
 - `reviewThreads.nodes[]` — 各スレッドの `isResolved` と `comments[].createdAt` / `body` / `path` / `line` / `author.login`
 
-クエリ例:
+クエリ例（`references/copilot-in-progress-check.md` のクエリを使用。レビュー状態・スレッド・CI 状態を 1 ショットで取得する）:
 
 ```bash
 gh api graphql \
@@ -72,6 +73,22 @@ gh api graphql \
               }
             }
           }
+          commits(last: 1) {
+            nodes {
+              commit {
+                statusCheckRollup {
+                  state
+                  contexts(first: 100) {
+                    nodes {
+                      __typename
+                      ... on CheckRun { name status conclusion detailsUrl }
+                      ... on StatusContext { context state targetUrl }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -97,9 +114,25 @@ gh api graphql \
 見ても、新しい未解決コメントを見逃して merge に進んでしまう可能性があるため。
 次回の呼び出しで再度 Step 2 から状態を観測する。
 
-### Step 3-B: `isResolved: false` のスレッドの有無で分岐
+### Step 3-B: CI ステータス判定
 
 Step 3-A で進行中でないと判定された場合のみ本ステップに進む。
+
+Step 2 で取得した `commits(last:1).nodes[0].commit.statusCheckRollup` を確認する。
+
+- **`statusCheckRollup` が `null`（CI 未設定）** → **Step 3-B をスキップ**して Step 3-C へ進む。CI に関するロジックには一切入らない
+- **`statusCheckRollup.state` が `SUCCESS`** → CI 通過。Step 3-C へ
+- **`statusCheckRollup.state` が `PENDING` / `EXPECTED`** → CI 実行中。**何もせず即終了**（Step 3-A の進行中と同様。`processing/` を残したまま待機）
+- **`statusCheckRollup.state` が `FAILURE` / `ERROR`** → CI 失敗。以下で分岐:
+  - `ciAutoFix` が `false` → `steps/error-recovery.md` の `ci_auto_fix_disabled` セクションへ → **終了**
+  - `ciAutoFix` が `true`（デフォルト） → `steps/ci-fix.md` の全手順を実行 → **終了**
+
+> CI 失敗の修正はレビュースレッドの修正より優先する。ビルドが通らないコードの
+> レビュー指摘を修正しても、CI 通過後のレビューで別の指摘が出る可能性があるため。
+
+### Step 3-C: `isResolved: false` のスレッドの有無で分岐
+
+Step 3-A で進行中でなく、Step 3-B で CI が通過（または CI 未設定）と判定された場合のみ本ステップに進む。
 
 **分岐は一方通行。fix ルートに入ったら merge ルートには絶対に戻らない。**
 

@@ -40,6 +40,7 @@ DEFAULT_ALLOWED_COMMANDS=(
   "gh pr view"
   "gh pr merge"
   "gh pr list"
+  "gh pr checks"
   "gh api"
   "gh auth status"
   # TypeScript / JavaScript（チェック系）
@@ -197,6 +198,16 @@ if [[ "$COMMAND" == "gh pr merge"* ]]; then
 
         if [ -n "$MERGE_STATUS" ]; then
           deny "${MERGE_REVIEWER} がレビュー中のため merge 不可（status: ${MERGE_STATUS}）。fix 直後の同一セッションや Copilot の追加コメント投稿中は merge できません。"
+        fi
+
+        # --- CI チェック通過ガード（CI 未設定の場合はスキップ） ---
+        CI_TOTAL=$(gh pr checks "$MERGE_PR_NUM" --json name --jq 'length' 2>/dev/null || echo "0")
+        if [ "$CI_TOTAL" -gt 0 ]; then
+          CI_FAILED=$(gh pr checks "$MERGE_PR_NUM" --json conclusion \
+            --jq '[.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "")] | length' 2>/dev/null || echo "")
+          if [ -n "$CI_FAILED" ] && [ "$CI_FAILED" -gt 0 ]; then
+            deny "CI チェックが通過していないため merge 不可（${CI_FAILED} 件の未通過チェック）"
+          fi
         fi
       fi
     fi
